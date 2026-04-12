@@ -12,7 +12,7 @@ import os
 NEO4J_URI = os.getenv("NEO4J_URI")
 NEO4J_USER = os.getenv("NEO4J_USERNAME")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-COHERE_KEY = os.getenv("aO28RpD2lrgCB6DLYIXYWuNXetIishEvcKRsXzB5")
+COHERE_KEY = os.getenv("COHERE_API_KEY")
 # --- MRD-RAG Classes ---
 
 class Neo4jConnector:
