@@ -1,4 +1,4 @@
-!pip install -q neo4j==5.19 pandas tqdm
+
 
 from neo4j import GraphDatabase
 import pandas as pd
