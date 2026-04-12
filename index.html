@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>RAGnosis Chat</title>
+  <style>
+    body { font-family: Arial; text-align: center; margin-top: 50px; }
+    input { padding: 10px; width: 300px; }
+    button { padding: 10px; }
+    #response { margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+<h1>RAGnosis Chatbot 🤖</h1>
+
+<input type="text" id="message" placeholder="Enter your symptoms..." />
+<button onclick="sendMessage()">Send</button>
+
+<div id="response"></div>
+
+<script>
+async function sendMessage() {
+  const msg = document.getElementById("message").value;
+
+  const res = await fetch("https://ragnosis-w89u.onrender.com/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: msg,
+      conversation: []
+    })
+  });
+
+  const data = await res.json();
+  document.getElementById("response").innerText = data.response;
+}
+</script>
+
+</body>
+</html>
