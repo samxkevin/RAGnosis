@@ -7,11 +7,12 @@ import cohere, json, logging
 logging.getLogger("neo4j").setLevel(logging.ERROR)
 
 # --- Credentials (use your own secure method in production) ---
-NEO4J_URI = "neo4j+s://93e70964.databases.neo4j.io"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "gRxTh7vWpS5YjpuDx5OQLQjRjNgIZs1Aw6GFStp9bo0"
-COHERE_KEY = "aO28RpD2lrgCB6DLYIXYWuNXetIishEvcKRsXzB5"
+import os
 
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USERNAME")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+COHERE_KEY = os.getenv("aO28RpD2lrgCB6DLYIXYWuNXetIishEvcKRsXzB5")
 # --- MRD-RAG Classes ---
 
 class Neo4jConnector:
