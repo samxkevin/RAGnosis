@@ -81,4 +81,4 @@ doctor-chatbot-neo4j/
 
 ## Contact: anumulasamarth008@gmail.com
 
-For questions or support, open an issue or email [sathvik2903@gmail.com](mailto:sathvik2903@gmail.com).
+You can also contact: [sathvik2903@gmail.com](mailto:sathvik2903@gmail.com).
