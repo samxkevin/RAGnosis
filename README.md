@@ -1,4 +1,4 @@
-# RAGnosis — Neo4j + Cohere
+# RAGnosis : Neo4j + Cohere
 
 An advanced, AI-powered medical chatbot that leverages a biomedical **Neo4j knowledge graph** and the latest **Cohere language model** to conduct multi-turn patient conversations, suggest diagnoses, and provide concise medical advice.
 
