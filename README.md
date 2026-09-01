@@ -1,8 +1,8 @@
 # RAGnosis
 
-RAGnosis is a biomedical retrieval-augmented chatbot. A user describes symptoms in a browser text chat. Flask retrieves related entities from a remote Neo4j Aura knowledge graph, then Cohere generates a follow-up or advice reply using that context.
+RAGnosis is a biomedical retrieval-augmented chatbot. A user describes symptoms in a browser text chat. Flask retrieves related entities from a remote Neo4j Aura knowledge graph, then Cohere generates a follow-up or advice reply from that context.
 
-The deployed application in this repository is text-only Flask. It is informational only and is not a substitute for professional medical diagnosis or treatment.
+This Render deployment is the text RAG application in `app.py` and `index.html`. It is informational only and is not a substitute for professional medical diagnosis or treatment.
 
 ## Architecture
 
@@ -26,78 +26,46 @@ Flask app.py
         Text response
 ```
 
-Neo4j is not started inside the Render process. Production retrieval uses a remote Aura instance over `neo4j+s://`.
+Neo4j is not started inside the Render process. Retrieval uses a remote Aura instance over `neo4j+s://`.
 
-## What this repository implements
+## Flask application
 
-Reachable in the running web app:
+`app.py` is the production entry point.
 
-- Multi-turn text chat at `/`
-- `POST /chat` retrieval-augmented replies
-- `GET /health` process liveness and Neo4j/Cohere status
-- Neo4j Aura keyword retrieval
-- Cohere Chat generation
-- Medical safety disclaimer in the UI, `/health`, and model prompt
-- Browser-side conversation transcript sent with each chat request
+- `GET /` serves the text-chat UI
+- `POST /chat` runs retrieval and generation
+- `GET /health` reports process liveness and whether Neo4j and Cohere are configured
 
-Not implemented in this repository, and not part of the Render service:
+The UI is `index.html`: RAGnosis branding, a multi-turn transcript, a symptom input, Neo4j/Cohere status, and the medical disclaimer. Conversation history is kept in the browser and sent with each `/chat` request.
 
-- Gradio
-- Whisper speech-to-text
-- XTTS or other local text-to-speech
-- Voice chat
-- Image upload
-- Neo4j full-text indexes
-- Durable server-side conversation storage
+## Neo4j Aura retrieval
 
-A separate notebook prototype may contain experimental Gradio, Whisper, XTTS, or image-upload work. Those pieces are not in the GitHub application entry point and are not deployed.
+`app.py` reads Aura settings from the environment and connects lazily.
 
-## Main components
+Retrieval is Cypher `CONTAINS` matching over `name`, `text`, `description`, `disease`, `symptom`, `title`, and `canonical_name`, limited to five nodes. Embedding vectors are stripped before context is sent to Cohere.
 
-- `app.py`: Flask entry point, lazy Neo4j connector, Cohere generation, `/`, `/chat`, and `/health`.
-- `index.html`: text-chat UI served at `/`.
-- `Work/doctor_chatbot.py`: command-line chatbot using the same Neo4j + Cohere pattern.
-- `EmbeddingsIngestion.py`, `EmbeddingsEnrichmentEncrpted.py`, `GraphReconstructionEncrypted.py`: offline graph construction scripts. They are not required to start the web service.
-- `Database/`: graph export, dump, and enrichment files used to build the knowledge graph offline.
-- `render.yaml`: Render Web Service settings.
+If Aura is paused or unreachable, `/` and `/health` still respond. `/chat` returns the connection error and does not pretend retrieval succeeded.
 
-## Neo4j Aura
-
-Environment variables:
-
-- `NEO4J_URI`
-- `NEO4J_USER`
-- `NEO4J_PASSWORD`
-- `NEO4J_DATABASE`
-
-The application reads these names only from the process environment. Credentials are not stored in source.
-
-The driver is created lazily on first use. If Aura is paused or unreachable, `/` and `/health` still respond. `/chat` returns the connection error and does not pretend retrieval succeeded.
-
-Retrieval is Cypher `CONTAINS` matching over `name`, `text`, `description`, `disease`, `symptom`, `title`, and `canonical_name`, limited to five nodes. Embedding vectors are removed before context is sent to Cohere.
-
-## Cohere
-
-Set `COHERE_API_KEY`.
+## Cohere generation
 
 Generation uses `cohere.Client` Chat with primary model `command-a-03-2025` and fallback `command-r7b-12-2024` if the primary model is unavailable. A missing key or API error is returned to the user. The app does not fabricate a diagnosis when Cohere is unavailable.
 
-## Conversation persistence
+## Conversation handling
 
-The browser keeps the current transcript and posts it to `/chat` as `conversation`. The CLI chatbot keeps memory only for that process. Render Free filesystems are ephemeral, so there is no durable conversation store across restarts or idle spin-down.
+The browser stores the current transcript as `{patient, doctor}` turns and posts that array to `/chat`. The CLI chatbot in `Work/doctor_chatbot.py` keeps memory only for that process. Render Free filesystems are ephemeral, so there is no durable server-side conversation store.
 
 ## Environment variables
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `NEO4J_URI` | yes for retrieval | Aura URI, for example `neo4j+s://xxxxxxxx.databases.neo4j.io` |
+| `NEO4J_URI` | yes for retrieval | Aura URI |
 | `NEO4J_USER` | yes for retrieval | Aura username |
 | `NEO4J_PASSWORD` | yes for retrieval | Aura password |
 | `NEO4J_DATABASE` | recommended | Aura database name |
 | `COHERE_API_KEY` | yes for generation | Cohere API key |
 | `PORT` | set by Render | HTTP port; local default is `10000` |
 
-Copy `.env.example`. Do not commit real values.
+These names are read only from the process environment. Copy `.env.example`. Do not commit real values.
 
 ## Local setup
 
@@ -136,7 +104,7 @@ Web Service:
 
 Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`, and `COHERE_API_KEY` in the Render dashboard for the current Aura instance and current Cohere key. Do not paste those values into the repository. Render provides the public URL.
 
-Render Free has no GPU and spins down after about 15 minutes idle. The first request after spin-down can take about a minute. This text-only service does not load local speech models.
+Render Free has no GPU and spins down after about 15 minutes idle. The first request after spin-down can take about a minute.
 
 ## Medical safety disclaimer
 
@@ -146,4 +114,4 @@ RAGnosis is an informational biomedical assistant. It does not provide professio
 
 Use environment variables only. Do not put Aura passwords or Cohere keys in source, README, or logs.
 
-Older Git commits on this GitHub repository still contain leaked Neo4j and Cohere credentials. Those values must be treated as compromised and rotated in Aura and Cohere. Current `HEAD` does not contain those secrets.
+Older Git commits on this GitHub repository still contain leaked credentials. Treat those values as compromised and rotate them. Current `HEAD` does not contain those secrets.
