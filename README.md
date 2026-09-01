@@ -156,3 +156,8 @@ This repository does not include an automated test suite. After install, confirm
 ## Medical disclaimer
 
 RAGnosis is an informational biomedical assistant. It does not provide professional medical diagnosis or treatment and is not a substitute for qualified clinical care. Seek in-person medical help for personal health decisions.
+
+## Contact
+
+- [anumulasamarth008@gmail.com](mailto:anumulasamarth008@gmail.com)
+- [sathvik2903@gmail.com](mailto:sathvik2903@gmail.com)
