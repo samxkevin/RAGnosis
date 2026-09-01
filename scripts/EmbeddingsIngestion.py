@@ -10,10 +10,10 @@ NEO4J_USER = os.environ.get("NEO4J_USER", "")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
 NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "")
 
-ROOT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 BASE_DIR = Path(os.environ.get(
     "ENRICHMENT_DIR",
-    ROOT_DIR / "Database" / "EnrichmentReport",
+    REPO_ROOT / "Database" / "EnrichmentReport",
 ))
 SIM_LINKS_FILE = BASE_DIR / "sim_links.csv"
 

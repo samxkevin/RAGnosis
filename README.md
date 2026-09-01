@@ -4,7 +4,20 @@ RAGnosis is a biomedical retrieval-augmented chatbot. A user describes symptoms 
 
 This Render deployment is the text RAG application in `app.py` and `index.html`. It is informational only and is not a substitute for professional medical diagnosis or treatment.
 
-## Architecture
+## Repository layout
+
+```
+app.py                 Production Flask entry point (gunicorn app:app)
+index.html             Production text-chat UI
+requirements.txt       Production Python dependencies
+render.yaml            Render Web Service settings
+.env.example           Environment variable names (no secrets)
+Database/              Offline graph export and enrichment CSVs
+scripts/               CLI chatbot and graph ingestion utilities
+experiments/           Notebooks and Colab pipeline exports (not deployed)
+```
+
+## Production application
 
 ```
 User
@@ -26,35 +39,33 @@ Flask app.py
         Text response
 ```
 
-Neo4j is not started inside the Render process. Retrieval uses a remote Aura instance over `neo4j+s://`.
-
-## Flask application
-
 `app.py` is the production entry point.
 
 - `GET /` serves the text-chat UI
 - `POST /chat` runs retrieval and generation
 - `GET /health` reports process liveness and whether Neo4j and Cohere are configured
 
-The UI is `index.html`: RAGnosis branding, a multi-turn transcript, a symptom input, Neo4j/Cohere status, and the medical disclaimer. Conversation history is kept in the browser and sent with each `/chat` request.
+The UI is `index.html`: RAGnosis branding, a multi-turn transcript, a symptom input, Neo4j/Cohere status, and the medical disclaimer.
 
-## Neo4j Aura retrieval
+Neo4j is not started inside the Render process. Retrieval uses a remote Aura instance over `neo4j+s://`.
 
-`app.py` reads Aura settings from the environment and connects lazily.
-
-Retrieval is Cypher `CONTAINS` matching over `name`, `text`, `description`, `disease`, `symptom`, `title`, and `canonical_name`, limited to five nodes. Embedding vectors are stripped before context is sent to Cohere.
+The driver connects lazily. Retrieval is Cypher `CONTAINS` matching over `name`, `text`, `description`, `disease`, `symptom`, `title`, and `canonical_name`, limited to five nodes. Embedding vectors are stripped before context is sent to Cohere.
 
 If Aura is paused or unreachable, `/` and `/health` still respond. `/chat` returns the connection error and does not pretend retrieval succeeded.
 
-## Cohere generation
-
 Generation uses `cohere.Client` Chat with primary model `command-a-03-2025` and fallback `command-r7b-12-2024` if the primary model is unavailable. A missing key or API error is returned to the user. The app does not fabricate a diagnosis when Cohere is unavailable.
 
-## Conversation handling
+The browser stores the current transcript as `{patient, doctor}` turns and posts that array to `/chat`. Render Free filesystems are ephemeral, so there is no durable server-side conversation store.
 
-The browser stores the current transcript as `{patient, doctor}` turns and posts that array to `/chat`. The CLI chatbot in `Work/doctor_chatbot.py` keeps memory only for that process. Render Free filesystems are ephemeral, so there is no durable server-side conversation store.
+## Experimental and notebook work
 
-## Environment variables
+See `experiments/README.md`.
+
+That folder holds Colab RAG notebooks and graph-construction exports. They are historical/reference material. They are not served by gunicorn and are not part of the Render production path.
+
+The CLI chatbot is `scripts/doctor_chatbot.py`. Graph similarity ingestion is `scripts/EmbeddingsIngestion.py`.
+
+## Configuration and environment variables
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
@@ -63,11 +74,11 @@ The browser stores the current transcript as `{patient, doctor}` turns and posts
 | `NEO4J_PASSWORD` | yes for retrieval | Aura password |
 | `NEO4J_DATABASE` | recommended | Aura database name |
 | `COHERE_API_KEY` | yes for generation | Cohere API key |
-| `PORT` | set by Render | HTTP port; local default is `10000` |
+| `PORT` | set by the host | HTTP port for gunicorn |
 
-These names are read only from the process environment. Copy `.env.example`. Do not commit real values.
+These names are read only from the process environment. Copy `.env.example`. Do not commit real values. Render injects `PORT`; do not hardcode the service port.
 
-## Local setup
+## Development
 
 Python 3.11.
 
@@ -83,12 +94,10 @@ export COHERE_API_KEY=
 python app.py
 ```
 
-Open `http://127.0.0.1:10000`.
-
-CLI:
+Without `PORT`, local `python app.py` listens on `8000`. With gunicorn, bind `$PORT`.
 
 ```bash
-python Work/doctor_chatbot.py
+python scripts/doctor_chatbot.py
 ```
 
 ## Render deployment
@@ -100,7 +109,7 @@ Web Service:
 - Start command: `gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120`
 - Health check path: `/health`
 - Host: `0.0.0.0`
-- Port: `$PORT` (Render default `10000`)
+- Port: `$PORT`
 
 Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`, and `COHERE_API_KEY` in the Render dashboard for the current Aura instance and current Cohere key. Do not paste those values into the repository. Render provides the public URL.
 
