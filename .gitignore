@@ -1,11 +1,13 @@
-﻿config.py
+config.py
 *.env
 .env
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints
 venv/
+.venv/
 ENV/
+*.zip
 .vscode/
 .DS_Store
 desktop.ini

@@ -1,34 +1,36 @@
 # ============================================================
-# 🩺 DOCTOR CHATBOT v2.8 — Neo4j + Cohere (2025, Persistent Chat)
+# DOCTOR CHATBOT v2.8 — Neo4j + Cohere (Persistent Chat)
 # ============================================================
 
-# Import credentials from config.py
-try:
-    from config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, COHERE_KEY
-except ImportError:
-    print("❌ ERROR: config.py not found!")
-    print("Create config.py from config.example.py and add your credentials.")
-    exit(1)
+import os
+import sys
 
-# Import Libraries
+NEO4J_URI = os.environ.get("NEO4J_URI", "")
+NEO4J_USER = os.environ.get("NEO4J_USER", "") or os.environ.get("NEO4J_USERNAME", "")
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
+COHERE_KEY = os.environ.get("COHERE_API_KEY", "")
+
+if not all([NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, COHERE_KEY]):
+    print("ERROR: missing environment variables.")
+    print("Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, and COHERE_API_KEY.")
+    sys.exit(1)
+
 from neo4j import GraphDatabase
 import cohere, json, logging
 
-# Hide Neo4j debug output
 logging.getLogger("neo4j").setLevel(logging.ERROR)
 
-# Neo4j Connector (safe query filtering)
 class Neo4jConnector:
     def __init__(self, uri, user, password):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
-        print(f"✓ Connected to Neo4j at {uri}")
+        print(f"Connected to Neo4j at {uri}")
 
     def close(self):
         self.driver.close()
-        print("✓ Neo4j connection closed")
+        print("Neo4j connection closed")
 
     def search_entities(self, query_text):
-        safe_props = ["name", "text", "description", "disease", "symptom", "title"]
+        safe_props = ["name", "text", "description", "disease", "symptom", "title", "canonical_name"]
         query_parts = [f"(n.{p} IS NOT NULL AND toLower(toString(n.{p})) CONTAINS toLower($query))" for p in safe_props]
         where_clause = " OR ".join(query_parts)
         cypher_query = f"""
@@ -40,17 +42,20 @@ class Neo4jConnector:
             result = session.run(cypher_query, {"query": query_text})
             records = result.values()
             context = "\n".join([
-                json.dumps(r[0]._properties, indent=2)
+                json.dumps(
+                    {k: v for k, v in r[0]._properties.items() if k.lower() not in {"embedding", "embeddings", "vector"}},
+                    indent=2,
+                    default=str,
+                )
                 for r in records
             ])
             return context if context else "No relevant entities found."
 
-# Cohere Biomedical Chat Backend
 class BiomedicalRAG:
-    def __init__(self, api_key, model="command-r-08-2024"):
+    def __init__(self, api_key, model="command-a-03-2025"):
         self.cohere = cohere.Client(api_key)
         self.model = model
-        print(f"✓ Cohere Chat backend initialized with model '{self.model}'")
+        print(f"Cohere Chat backend initialized with model '{self.model}'")
 
     def _prompt(self, conversation, context):
         convo_text = "\n".join([
@@ -59,6 +64,10 @@ class BiomedicalRAG:
         ])
         return f"""
 You are a kind, logical, biomedical doctor chatbot.
+
+SAFETY:
+- You are an informational assistant, not a licensed clinician.
+- Do not claim to replace professional diagnosis or treatment.
 
 PATIENT CONVERSATION HISTORY:
 {convo_text}
@@ -86,28 +95,28 @@ YOUR RESPONSE:
         except Exception as e:
             return f"Error querying Cohere Chat API: {e}"
 
-# Doctor Chatbot Pipeline
 class DoctorChatPipeline:
     def __init__(self, uri, user, password, api_key):
         self.neo4j = Neo4jConnector(uri, user, password)
         self.rag = BiomedicalRAG(api_key)
-        print("✓ Doctor Chatbot Ready")
+        print("Doctor Chatbot Ready")
 
     def chat(self):
-        print("\n👨‍⚕️ DoctorBot: Hello! Please tell me how you're feeling today.")
+        print("\nDoctorBot: Hello! Please tell me how you're feeling today.")
+        print("This assistant is informational and does not replace professional medical care.")
         conversation = []
         diagnosis_suggested = False
 
         while True:
-            patient_input = input("\n🧍‍♂️ You: ").strip()
+            patient_input = input("\nYou: ").strip()
             if patient_input.lower() in ["quit", "exit", "bye"]:
-                print("\n👨‍⚕️ DoctorBot: Take care! Wishing you good health.")
+                print("\nDoctorBot: Take care! Wishing you good health.")
                 break
 
             conversation.append({"patient": patient_input})
             context = self.neo4j.search_entities(patient_input)
             doctor_reply = self.rag.answer(conversation, context)
-            print(f"\n👨‍⚕️ DoctorBot: {doctor_reply}\n")
+            print(f"\nDoctorBot: {doctor_reply}\n")
 
             conversation[-1]["doctor"] = doctor_reply
 
@@ -115,20 +124,18 @@ class DoctorChatPipeline:
                 "diagnosis", "you may have", "it appears", "likely cause", "seems like"
             ]):
                 if not diagnosis_suggested:
-                    print("\n✅ DoctorBot: I've suggested a likely diagnosis. "
+                    print("\nDoctorBot: I've suggested a likely diagnosis. "
                           "Continue chatting or type 'quit' to end.")
                 diagnosis_suggested = True
 
-        # Summary
-        print("\n🩺 Conversation Summary")
+        print("\nConversation Summary")
         print("=" * 60)
         for turn in conversation:
-            print(f"🧍‍♂️ You: {turn['patient']}")
+            print(f"You: {turn['patient']}")
             if "doctor" in turn:
-                print(f"👨‍⚕️ DoctorBot: {turn['doctor']}\n")
+                print(f"DoctorBot: {turn['doctor']}\n")
         print("=" * 60)
 
-# Start Interactive Chat
 if __name__ == "__main__":
     pipeline = DoctorChatPipeline(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, COHERE_KEY)
     pipeline.chat()

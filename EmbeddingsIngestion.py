@@ -1,22 +1,24 @@
-
+from pathlib import Path
+import os
 
 from neo4j import GraphDatabase
 import pandas as pd
 from tqdm import tqdm
 
-# ============================================================
-# CONFIG
-# ============================================================
-NEO4J_URI = "neo4j+s://93e70964.databases.neo4j.io"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = " gRxTh7vWpS5YjpuDx5OQLQjRjNgIZs1Aw6GFStp9bo0"
+NEO4J_URI = os.environ.get("NEO4J_URI", "")
+NEO4J_USER = os.environ.get("NEO4J_USER", "") or os.environ.get("NEO4J_USERNAME", "")
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
 
-BASE_DIR = "/content/drive/MyDrive/Synced/ProjectSchool2025/AugToNov/Dataset/EnrichmentReport"
-SIM_LINKS_FILE = f"{BASE_DIR}/sim_links.csv"
+ROOT_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(os.environ.get(
+    "ENRICHMENT_DIR",
+    ROOT_DIR / "Database" / "EnrichmentReport",
+))
+SIM_LINKS_FILE = BASE_DIR / "sim_links.csv"
 
-# ============================================================
-# CONNECT
-# ============================================================
+if not all([NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD]):
+    raise RuntimeError("Set NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD before running ingestion.")
+
 driver = GraphDatabase.driver(
     NEO4J_URI,
     auth=(NEO4J_USER, NEO4J_PASSWORD)
@@ -24,9 +26,6 @@ driver = GraphDatabase.driver(
 
 print("Connected to Neo4j Aura")
 
-# ============================================================
-# ENSURE CONSTRAINTS (SAFE / IDEMPOTENT)
-# ============================================================
 with driver.session() as s:
     s.run("""
     CREATE CONSTRAINT IF NOT EXISTS
@@ -35,12 +34,8 @@ with driver.session() as s:
     """)
 print("Constraints ensured")
 
-# ============================================================
-# LOAD SIMILARITY DATA
-# ============================================================
 sim_df = pd.read_csv(SIM_LINKS_FILE)
 
-# Robust column detection
 def pick(colnames):
     for c in sim_df.columns:
         for k in colnames:
@@ -57,9 +52,6 @@ if not src_col or not tgt_col or not score_col:
 
 print("Using sim_links columns:", src_col, tgt_col, score_col)
 
-# ============================================================
-# INGEST SIMILARITY LINKS (RESUMABLE)
-# ============================================================
 with driver.session() as s:
     for _, r in tqdm(sim_df.iterrows(), total=len(sim_df), desc="SIMILAR_TO links"):
         s.run(
@@ -76,9 +68,6 @@ with driver.session() as s:
 
 print("Similarity ingestion completed")
 
-# ============================================================
-# INTEGRITY REPORT
-# ============================================================
 with driver.session() as s:
     stats = {
         "canonical_nodes": s.run(
@@ -103,13 +92,3 @@ for k, v in stats.items():
 
 driver.close()
 print("\nContinuation pipeline completed cleanly")
-
-import time
-from google.colab import runtime
-
-print("[STATUS] Sleeping 60s for Drive sync...")
-time.sleep(60)
-
-print("[STATUS] Disconnecting Runtime...")
-runtime.unassign()
-

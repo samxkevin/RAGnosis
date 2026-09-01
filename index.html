@@ -1,42 +1,215 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RAGnosis Chat</title>
   <style>
-    body { font-family: Arial; text-align: center; margin-top: 50px; }
-    input { padding: 10px; width: 300px; }
-    button { padding: 10px; }
-    #response { margin-top: 20px; }
+    :root {
+      --ink: #12202b;
+      --muted: #5b6b75;
+      --line: #d7e0e6;
+      --paper: #f6f8f7;
+      --card: #ffffff;
+      --accent: #1f5f57;
+      --accent-2: #163e48;
+      --warn: #8a4b16;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      letter-spacing: 0.02em;
+    }
+    .lede {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .status {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--card);
+      padding: 6px 10px;
+      border-radius: 999px;
+    }
+    .pill.ok { color: var(--accent); }
+    .pill.bad { color: var(--warn); }
+    .chat {
+      background: var(--card);
+      border: 1px solid var(--line);
+      min-height: 360px;
+      max-height: 520px;
+      overflow: auto;
+      padding: 16px;
+      text-align: left;
+    }
+    .msg {
+      margin: 0 0 14px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .msg .who {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .composer {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid var(--line);
+      font-size: 16px;
+    }
+    button {
+      padding: 12px 18px;
+      border: 0;
+      background: var(--accent-2);
+      color: #fff;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+    .disclaimer {
+      margin-top: 18px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
   </style>
 </head>
 <body>
+  <div class="wrap">
+    <h1>RAGnosis</h1>
+    <p class="lede">Biomedical chatbot using a Neo4j knowledge graph and Cohere for multi-turn medical conversation.</p>
+    <div class="status">
+      <span id="neo4j-status" class="pill">Neo4j: checking</span>
+      <span id="cohere-status" class="pill">Cohere: checking</span>
+    </div>
+    <div id="chat" class="chat">
+      <div class="msg">
+        <div class="who">RAGnosis</div>
+        Hello. Please tell me how you are feeling today.
+      </div>
+    </div>
+    <div class="composer">
+      <input type="text" id="message" placeholder="Enter your symptoms..." />
+      <button id="send" onclick="sendMessage()">Send</button>
+    </div>
+    <p class="disclaimer" id="disclaimer">
+      RAGnosis is informational only. It does not replace professional medical diagnosis or treatment.
+    </p>
+  </div>
+  <script>
+    const conversation = [];
+    const chatEl = document.getElementById("chat");
+    const inputEl = document.getElementById("message");
+    const sendBtn = document.getElementById("send");
 
-<h1>RAGnosis Chatbot 🤖</h1>
+    function addMessage(who, text) {
+      const wrap = document.createElement("div");
+      wrap.className = "msg";
+      wrap.innerHTML = `<div class="who">${who}</div>${escapeHtml(text)}`;
+      chatEl.appendChild(wrap);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
 
-<input type="text" id="message" placeholder="Enter your symptoms..." />
-<button onclick="sendMessage()">Send</button>
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
 
-<div id="response"></div>
+    function setPill(id, ok, label) {
+      const el = document.getElementById(id);
+      el.textContent = label;
+      el.className = "pill " + (ok ? "ok" : "bad");
+    }
 
-<script>
-async function sendMessage() {
-  const msg = document.getElementById("message").value;
+    async function loadHealth() {
+      try {
+        const res = await fetch("/health");
+        const data = await res.json();
+        setPill(
+          "neo4j-status",
+          data.neo4j && data.neo4j.connected,
+          data.neo4j && data.neo4j.connected ? "Neo4j: connected" : "Neo4j: unavailable"
+        );
+        setPill(
+          "cohere-status",
+          data.cohere && data.cohere.configured,
+          data.cohere && data.cohere.configured ? "Cohere: configured" : "Cohere: missing key"
+        );
+        if (data.disclaimer) {
+          document.getElementById("disclaimer").textContent = data.disclaimer;
+        }
+      } catch (err) {
+        setPill("neo4j-status", false, "Neo4j: status unknown");
+        setPill("cohere-status", false, "Cohere: status unknown");
+      }
+    }
 
-  const res = await fetch("https://ragnosis-w89u.onrender.com/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      message: msg,
-      conversation: []
-    })
-  });
+    async function sendMessage() {
+      const msg = inputEl.value.trim();
+      if (!msg) return;
+      inputEl.value = "";
+      addMessage("You", msg);
+      sendBtn.disabled = true;
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: msg,
+            conversation: conversation
+          })
+        });
+        const data = await res.json();
+        const reply = data.response || "No response returned.";
+        addMessage("RAGnosis", reply);
+        conversation.push({ patient: msg, doctor: reply });
+      } catch (err) {
+        addMessage("RAGnosis", "The chat service could not be reached. Please try again.");
+      } finally {
+        sendBtn.disabled = false;
+        inputEl.focus();
+      }
+    }
 
-  const data = await res.json();
-  document.getElementById("response").innerText = data.response;
-}
-</script>
+    inputEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        sendMessage();
+      }
+    });
 
+    loadHealth();
+  </script>
 </body>
 </html>
