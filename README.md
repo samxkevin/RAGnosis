@@ -70,7 +70,7 @@ Environment variables:
 - `NEO4J_PASSWORD`
 - `NEO4J_DATABASE`
 
-The application reads `NEO4J_USER`, then `NEO4J_USERNAME` if `NEO4J_USER` is empty. Credentials are not stored in source.
+The application reads these names only from the process environment. Credentials are not stored in source.
 
 The driver is created lazily on first use. If Aura is paused or unreachable, `/` and `/health` still respond. `/chat` returns the connection error and does not pretend retrieval succeeded.
 
@@ -107,11 +107,11 @@ Python 3.11.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export NEO4J_URI="neo4j+s://xxxxxxxx.databases.neo4j.io"
-export NEO4J_USER="neo4j"
-export NEO4J_PASSWORD="your-aura-password"
-export NEO4J_DATABASE="neo4j"
-export COHERE_API_KEY="your-cohere-key"
+export NEO4J_URI=
+export NEO4J_USER=
+export NEO4J_PASSWORD=
+export NEO4J_DATABASE=
+export COHERE_API_KEY=
 python app.py
 ```
 
@@ -134,7 +134,7 @@ Web Service:
 - Host: `0.0.0.0`
 - Port: `$PORT` (Render default `10000`)
 
-Set the Neo4j and Cohere variables in the Render dashboard. Render provides the public URL.
+Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`, and `COHERE_API_KEY` in the Render dashboard for the current Aura instance and current Cohere key. Do not paste those values into the repository. Render provides the public URL.
 
 Render Free has no GPU and spins down after about 15 minutes idle. The first request after spin-down can take about a minute. This text-only service does not load local speech models.
 

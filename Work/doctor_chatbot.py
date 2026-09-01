@@ -6,11 +6,12 @@ import os
 import sys
 
 NEO4J_URI = os.environ.get("NEO4J_URI", "")
-NEO4J_USER = os.environ.get("NEO4J_USER", "") or os.environ.get("NEO4J_USERNAME", "")
+NEO4J_USER = os.environ.get("NEO4J_USER", "")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
-COHERE_KEY = os.environ.get("COHERE_API_KEY", "")
+NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "")
+COHERE_API_KEY = os.environ.get("COHERE_API_KEY", "")
 
-if not all([NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, COHERE_KEY]):
+if not all([NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, COHERE_API_KEY]):
     print("ERROR: missing environment variables.")
     print("Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, and COHERE_API_KEY.")
     sys.exit(1)
@@ -21,13 +22,19 @@ import cohere, json, logging
 logging.getLogger("neo4j").setLevel(logging.ERROR)
 
 class Neo4jConnector:
-    def __init__(self, uri, user, password):
+    def __init__(self, uri, user, password, database=""):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
-        print(f"Connected to Neo4j at {uri}")
+        self.database = database
+        print("Connected to Neo4j Aura")
 
     def close(self):
         self.driver.close()
         print("Neo4j connection closed")
+
+    def _session(self):
+        if self.database:
+            return self.driver.session(database=self.database)
+        return self.driver.session()
 
     def search_entities(self, query_text):
         safe_props = ["name", "text", "description", "disease", "symptom", "title", "canonical_name"]
@@ -38,7 +45,7 @@ class Neo4jConnector:
             WHERE {where_clause}
             RETURN n LIMIT 5
         """
-        with self.driver.session() as session:
+        with self._session() as session:
             result = session.run(cypher_query, {"query": query_text})
             records = result.values()
             context = "\n".join([
@@ -96,8 +103,8 @@ YOUR RESPONSE:
             return f"Error querying Cohere Chat API: {e}"
 
 class DoctorChatPipeline:
-    def __init__(self, uri, user, password, api_key):
-        self.neo4j = Neo4jConnector(uri, user, password)
+    def __init__(self, uri, user, password, api_key, database=""):
+        self.neo4j = Neo4jConnector(uri, user, password, database=database)
         self.rag = BiomedicalRAG(api_key)
         print("Doctor Chatbot Ready")
 
@@ -137,5 +144,5 @@ class DoctorChatPipeline:
         print("=" * 60)
 
 if __name__ == "__main__":
-    pipeline = DoctorChatPipeline(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, COHERE_KEY)
+    pipeline = DoctorChatPipeline(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, COHERE_API_KEY, database=NEO4J_DATABASE)
     pipeline.chat()

@@ -6,8 +6,9 @@ import pandas as pd
 from tqdm import tqdm
 
 NEO4J_URI = os.environ.get("NEO4J_URI", "")
-NEO4J_USER = os.environ.get("NEO4J_USER", "") or os.environ.get("NEO4J_USERNAME", "")
+NEO4J_USER = os.environ.get("NEO4J_USER", "")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
+NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "")
 
 ROOT_DIR = Path(__file__).resolve().parent
 BASE_DIR = Path(os.environ.get(
@@ -24,9 +25,14 @@ driver = GraphDatabase.driver(
     auth=(NEO4J_USER, NEO4J_PASSWORD)
 )
 
+def _session():
+    if NEO4J_DATABASE:
+        return driver.session(database=NEO4J_DATABASE)
+    return driver.session()
+
 print("Connected to Neo4j Aura")
 
-with driver.session() as s:
+with _session() as s:
     s.run("""
     CREATE CONSTRAINT IF NOT EXISTS
     FOR (c:EntityCanonical)
@@ -52,7 +58,7 @@ if not src_col or not tgt_col or not score_col:
 
 print("Using sim_links columns:", src_col, tgt_col, score_col)
 
-with driver.session() as s:
+with _session() as s:
     for _, r in tqdm(sim_df.iterrows(), total=len(sim_df), desc="SIMILAR_TO links"):
         s.run(
             """
@@ -68,7 +74,7 @@ with driver.session() as s:
 
 print("Similarity ingestion completed")
 
-with driver.session() as s:
+with _session() as s:
     stats = {
         "canonical_nodes": s.run(
             "MATCH (c:EntityCanonical) RETURN count(c) AS c"

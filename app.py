@@ -15,28 +15,31 @@ logger = logging.getLogger("ragnosis")
 
 ROOT_DIR = Path(__file__).resolve().parent
 
-def _env(name, default=""):
-    return os.environ.get(name, default) or default
+NEO4J_URI = os.environ.get("NEO4J_URI", "")
+NEO4J_USER = os.environ.get("NEO4J_USER", "")
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
+NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "")
+COHERE_API_KEY = os.environ.get("COHERE_API_KEY", "")
 
 
 def neo4j_settings():
     return {
-        "uri": _env("NEO4J_URI"),
-        "user": _env("NEO4J_USER") or _env("NEO4J_USERNAME"),
-        "password": _env("NEO4J_PASSWORD"),
-        "database": _env("NEO4J_DATABASE"),
+        "uri": os.environ.get("NEO4J_URI", ""),
+        "user": os.environ.get("NEO4J_USER", ""),
+        "password": os.environ.get("NEO4J_PASSWORD", ""),
+        "database": os.environ.get("NEO4J_DATABASE", ""),
     }
 
 
 def cohere_api_key():
-    return _env("COHERE_API_KEY")
+    return os.environ.get("COHERE_API_KEY", "")
 
 
-NEO4J_URI = neo4j_settings()["uri"]
-NEO4J_USER = neo4j_settings()["user"]
-NEO4J_PASSWORD = neo4j_settings()["password"]
-NEO4J_DATABASE = neo4j_settings()["database"]
-COHERE_API_KEY = cohere_api_key()
+def _redact(text, secret):
+    text = str(text)
+    if secret and secret in text:
+        return text.replace(secret, "[redacted]")
+    return text
 
 PRIMARY_COHERE_MODEL = "command-a-03-2025"
 FALLBACK_COHERE_MODEL = "command-r7b-12-2024"
@@ -116,7 +119,7 @@ class Neo4jConnector:
             logger.info("Connected to Neo4j Aura")
             return True
         except Exception as exc:
-            self.last_error = str(exc)
+            self.last_error = _redact(exc, self.password)
             logger.error("Neo4j connection failed")
             if self.driver is not None:
                 try:
@@ -140,7 +143,7 @@ class Neo4jConnector:
             self.last_error = ""
             return True
         except Exception as exc:
-            self.last_error = str(exc)
+            self.last_error = _redact(exc, self.password)
             return False
 
     def search_entities(self, query_text):
@@ -258,10 +261,10 @@ YOUR RESPONSE:
                     self.last_error = ""
                     return text
                 except Exception as fallback_exc:
-                    self.last_error = str(fallback_exc)
-                    return f"Error querying Cohere Chat API: {fallback_exc}"
-            self.last_error = str(exc)
-            return f"Error querying Cohere Chat API: {exc}"
+                    self.last_error = _redact(fallback_exc, self.api_key)
+                    return f"Error querying Cohere Chat API: {self.last_error}"
+            self.last_error = _redact(exc, self.api_key)
+            return f"Error querying Cohere Chat API: {self.last_error}"
 
 
 class DoctorChatPipeline:
@@ -326,11 +329,12 @@ def chat():
             }
         )
     except Exception as exc:
-        logger.error("Chat failed: %s", exc)
+        safe = _redact(exc, neo4j_settings()["password"])
+        logger.error("Chat failed")
         return jsonify(
             {
-                "response": f"Knowledge retrieval failed: {exc}",
-                "error": str(exc),
+                "response": f"Knowledge retrieval failed: {safe}",
+                "error": safe,
                 "disclaimer": MEDICAL_DISCLAIMER,
             }
         ), 503
