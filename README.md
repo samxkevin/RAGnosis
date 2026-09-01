@@ -1,10 +1,10 @@
-# 🩺 RAGnosis — Neo4j + Cohere
+# RAGnosis — Neo4j + Cohere
 
 An advanced, AI-powered medical chatbot that leverages a biomedical **Neo4j knowledge graph** and the latest **Cohere language model** to conduct multi-turn patient conversations, suggest diagnoses, and provide concise medical advice.
 
 ---
 
-## 🚀 Features
+## Features
 
 - **Persistent doctor-patient chat** – intuitive and natural multi-turn dialog
 - **Intelligent follow-up questions** – asks about symptoms like a real doctor
@@ -15,7 +15,7 @@ An advanced, AI-powered medical chatbot that leverages a biomedical **Neo4j know
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 
 - Python (3.8+ recommended)
 - [Neo4j](https://neo4j.com/) (GraphDB, queried via official Python driver)
@@ -25,7 +25,7 @@ An advanced, AI-powered medical chatbot that leverages a biomedical **Neo4j know
 
 ---
 
-## 📦 Setup & Installation
+## Setup & Installation
 
 1. **Clone this repository:**
 
@@ -49,7 +49,7 @@ text
 
 ---
 
-## 🔑 Security
+## Security
 
 - **Never share your credentials!**  
 Credentials go in `config.py`, which is excluded from version control (`.gitignore`).
@@ -57,20 +57,20 @@ Credentials go in `config.py`, which is excluded from version control (`.gitigno
 
 ---
 
-## 🧑‍⚕️ Example Usage
+## Example Usage
 
-👨‍⚕️ DoctorBot: Hello! Please tell me how you're feeling today.
+ DoctorBot: Hello! Please tell me how you're feeling today.
 
-🧍‍♂️ You: I've had a sore throat and headache for two days.
+ You: I've had a sore throat and headache for two days.
 
-👨‍⚕️ DoctorBot: Thank you for sharing. Do you also have any fever or cough? How would you rate your pain?
+ DoctorBot: Thank you for sharing. Do you also have any fever or cough? How would you rate your pain?
 ...
 
 Type `quit`, `exit`, or `bye` to finish and receive a summary report.
 
 ---
 
-## 🗂️ Project Structure
+##  Project Structure
 
 doctor-chatbot-neo4j/
 ├── doctor_chatbot.py # Main chatbot code
@@ -79,6 +79,6 @@ doctor-chatbot-neo4j/
 ├── requirements.txt # Pip dependencies
 └── README.md # Project documentation
 
-## 📬 Contact
+## Contact: anumulasamarth008@gmail.com
 
 For questions or support, open an issue or email [sathvik2903@gmail.com](mailto:sathvik2903@gmail.com).
