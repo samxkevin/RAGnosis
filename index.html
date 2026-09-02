@@ -2,2662 +2,1284 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RAGnosis</title>
-
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
+    /* Digits always render in Times New Roman, even inside Georgia or Roboto Mono. */
+    @font-face {
+      font-family: "NumeralTNR";
+      src: local("Times New Roman"), local("TimesNewRoman"), local("Times");
+      unicode-range: U+0030-0039;
+    }
+
     :root {
-      --black: #000000;
-      --near-black: #050505;
-      --surface: rgba(12, 12, 12, 0.78);
-      --surface-soft: rgba(20, 20, 20, 0.64);
-      --surface-hover: rgba(32, 32, 32, 0.76);
-
-      --white: #f5f5f5;
-      --white-soft: #dddddd;
-      --grey: #a4a4a4;
-      --grey-dark: #686868;
-      --grey-darker: #3d3d3d;
-
-      --border: rgba(255, 255, 255, 0.11);
-      --border-strong: rgba(255, 255, 255, 0.18);
-
-      --radius: 22px;
-      --radius-small: 14px;
-
-      --content-width: 1180px;
-
-      --ui-font:
-        "Segoe UI",
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        sans-serif;
-
-      --quote-font:
-        Georgia,
-        "Times New Roman",
-        serif;
-
-      --mono-font:
-        Consolas,
-        "Courier New",
-        monospace;
+      --bg: #000000;
+      --ink: #f3f3f3;
+      --muted: #8d8d8d;
+      --dim: #5c5c5c;
+      --line: #2c2c2c;
+      --panel: #0c0c0c;
+      --panel-2: #141414;
+      --ok: #ececec;
+      --bad: #7a7a7a;
+      --georgia: Georgia, "Times New Roman", Times, serif;
+      --mono: "Roboto Mono", monospace;
+      --nums: "Times New Roman", Times, serif;
     }
 
-    * {
-      box-sizing: border-box;
-    }
 
-    html {
+    html, body {
+      margin: 0;
+      padding: 0;
       min-height: 100%;
-      background: #000;
-      scroll-behavior: smooth;
+      background: #050505;
+      color: var(--ink);
     }
 
     body {
-      min-height: 100vh;
-      margin: 0;
-
-      background: #000;
-      color: var(--white);
-
-      font-family: var(--ui-font);
-      font-size: 16px;
-      line-height: 1.6;
-
+      position: relative;
+      isolation: isolate;
+      background:
+        linear-gradient(
+          var(--gx, 135deg),
+          #050505,
+          #111111,
+          #242424,
+          #111111,
+          #050505
+        );
+      background-size: 300% 300%;
+      animation: ragDrift 30s ease-in-out infinite;
+      transition: background 1.5s ease;
       overflow-x: hidden;
+    }
 
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -12%;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(
+          circle at 22% 28%,
+          rgba(255,255,255,.075),
+          transparent 31%
+        ),
+        radial-gradient(
+          circle at 78% 72%,
+          rgba(180,180,180,.045),
+          transparent 36%
+        );
+      filter: blur(50px);
+      opacity: .9;
+      animation: ragAmbient 22s ease-in-out infinite alternate;
+      transform: translate3d(0,0,0);
+    }
+
+    @keyframes ragDrift {
+      0%, 100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
+    }
+
+    @keyframes ragAmbient {
+      0%   { transform: translate3d(-2%, 1%, 0) scale(1); }
+      100% { transform: translate3d(2%, -1%, 0) scale(1.04); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      body {
+        animation: none;
+        transition: none;
+      }
+
+      body::before {
+        animation: none;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html {
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       text-rendering: optimizeLegibility;
     }
+    body {
+      font-family: var(--georgia);
+      font-size: 17px;
+      line-height: 1.65;
+      letter-spacing: 0.01em;
+      font-kerning: normal;
+      font-feature-settings: "kern" 1, "liga" 1;
+      font-variant-numeric: lining-nums tabular-nums;
+      font-synthesis: none;
+      min-height: 100%;
+    }
+    a { color: inherit; }
+    button, input { font-family: inherit; }
 
-    /* ------------------------------------------------------------
-       BACKGROUND
-       ------------------------------------------------------------ */
+    .mono, code {
+      font-family: var(--mono);
+      font-style: normal;
+      letter-spacing: 0.02em;
+    }
+    .num {
+      font-family: var(--nums);
+      font-style: normal;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
 
-    #gradient-canvas {
+    #ambient {
       position: fixed;
       inset: 0;
-
-      width: 100vw;
-      height: 100vh;
-
-      z-index: -10;
-
+      width: 100%;
+      height: 100%;
+      z-index: 0;
       pointer-events: none;
       display: block;
+      background: #000;
     }
-
-    .background-overlay {
-      position: fixed;
-      inset: 0;
-
-      z-index: -9;
-      pointer-events: none;
-
-      background:
-        radial-gradient(
-          ellipse at center,
-          transparent 0%,
-          rgba(0, 0, 0, 0.16) 48%,
-          rgba(0, 0, 0, 0.62) 100%
-        );
+    .app {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      background: transparent;
     }
-
-    .grain {
-      position: fixed;
-      inset: 0;
-
-      z-index: -8;
-      pointer-events: none;
-
-      opacity: 0.025;
-
-      background-image:
-        url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
-    }
-
-    /* ------------------------------------------------------------
-       GLOBAL
-       ------------------------------------------------------------ */
-
-    .page-shell {
-      width: min(var(--content-width), calc(100% - 40px));
-      margin: 0 auto;
-      padding-bottom: 100px;
-    }
-
-    .page {
-      display: none;
-      animation: page-in 0.5s ease both;
-    }
-
-    .page.active {
-      display: block;
-    }
-
-    @keyframes page-in {
-      from {
-        opacity: 0;
-        transform: translateY(12px);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .glass {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-
-      box-shadow:
-        0 24px 80px rgba(0, 0, 0, 0.35),
-        inset 0 1px 0 rgba(255, 255, 255, 0.025);
-
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-    }
-
-    .eyebrow {
-      margin: 0 0 14px;
-
-      color: var(--grey);
-
-      font-family: var(--mono-font);
-      font-size: 12px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-
-    h1,
-    h2,
-    h3 {
-      margin-top: 0;
-      font-family: var(--ui-font);
-      font-weight: 500;
-      letter-spacing: -0.025em;
-    }
-
-    p {
-      color: var(--white-soft);
-    }
-
-    .muted {
-      color: var(--grey);
-    }
-
-    .technical {
-      font-family: var(--mono-font);
-      font-size: 13px;
-      color: var(--grey);
-      letter-spacing: -0.015em;
-    }
-
-    code,
-    .inline-code {
-      font-family: var(--mono-font);
-      font-size: 0.9em;
-
-      color: #eeeeee;
-
-      background: rgba(255, 255, 255, 0.07);
-
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      border-radius: 6px;
-
-      padding: 0.12em 0.38em;
-    }
-
-    /* ------------------------------------------------------------
-       NAVIGATION
-       ------------------------------------------------------------ */
 
     .nav {
-      position: relative;
-
+      position: sticky;
+      top: 0;
+      z-index: 5;
       display: flex;
       align-items: center;
       justify-content: space-between;
-
-      min-height: 82px;
+      gap: 16px;
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.62);
     }
-
     .brand {
-      border: 0;
-      background: transparent;
-
-      padding: 0;
-
-      color: var(--white);
-
-      font-family: var(--ui-font);
-      font-size: 18px;
-      font-weight: 600;
-
-      letter-spacing: -0.02em;
-
-      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      text-decoration: none;
+      color: var(--ink);
+      font-weight: 500;
     }
-
     .nav-links {
       display: flex;
-      align-items: center;
-      gap: 8px;
+      gap: 2px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
-
-    .nav-link {
+    .nav-links a {
+      text-decoration: none;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 8px 11px;
       border: 1px solid transparent;
-      border-radius: 999px;
-
-      background: transparent;
-
-      padding: 8px 15px;
-
-      color: var(--grey);
-
-      font-family: var(--ui-font);
-      font-size: 14px;
-
-      cursor: pointer;
-
-      transition:
-        color 0.25s ease,
-        background 0.25s ease,
-        border-color 0.25s ease;
     }
-
-    .nav-link:hover,
-    .nav-link.active {
-      color: var(--white);
-      background: rgba(255, 255, 255, 0.065);
-      border-color: var(--border);
+    .nav-links a.is-active {
+      color: var(--ink);
+      border-color: var(--line);
     }
+    .nav-links a:hover { color: var(--ink); }
 
-    /* ------------------------------------------------------------
-       HOME
-       ------------------------------------------------------------ */
+    .page { display: none; }
+    .page.is-active { display: block; }
 
-    .home {
-      padding-top: 75px;
+    .shell {
+      width: min(1080px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 36px 0 88px;
     }
 
     .hero {
-      min-height: calc(100vh - 160px);
-
+      min-height: calc(100vh - 62px);
       display: flex;
       flex-direction: column;
       justify-content: center;
-
-      padding: 40px 0 100px;
+      align-items: center;
+      text-align: center;
+      padding: 56px 20px 80px;
+    }
+    .eyebrow {
+      margin: 0 0 30px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
 
+    /* Three-line quote. Left aligned with a subtle serif ligature-like join. */
     .hero-quote {
       margin: 0;
-
-      font-family: var(--quote-font);
+      font-family: Georgia, serif;
       font-weight: 400;
       font-style: normal;
-
-      font-size: clamp(3.8rem, 8.4vw, 7.5rem);
-      line-height: 1;
-
-      letter-spacing: -0.025em;
-
-      text-align: left;
-
-      max-width: 11em;
-
+      font-size: clamp(2.45rem, 1.2rem + 5vw, 5.35rem);
+      color: #f7f7f7;
       font-kerning: normal;
       font-feature-settings: "kern" 1, "liga" 1;
+      letter-spacing: 0;
+      text-align: left;
+      max-width: 11.2em;
+    }
 
-      text-rendering: geometricPrecision;
+    .hero-quote .q1,
+    .hero-quote .q2,
+    .hero-quote .q3 {
+      display: block;
+      margin: 0;
+      font: inherit;
+      letter-spacing: inherit;
+    }
 
+    .hero-quote .q1 {
+      line-height: 1.08;
+    }
+
+    .hero-quote .q-pair {
+      display: block;
+      margin: -0.015em 0 0;
+    }
+
+    .hero-quote .q2 {
+      line-height: 1.08;
+    }
+
+    .hero-quote .q3 {
+      line-height: 1.08;
+      margin-left: 0.015em;
+    }
+
+    /* Smoother supporting typography */
+    .hero-lede {
+      margin: 36px auto 0;
+      max-width: 42rem;
+      color: #d2d2d2;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: clamp(1.12rem, 0.98rem + 0.45vw, 1.38rem);
+      font-weight: 600;
+      line-height: 1.62;
+      letter-spacing: 0.005em;
+      text-rendering: optimizeLegibility;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
 
-    .hero-quote span {
-      display: block;
-
-      margin: 0;
-      padding: 0;
-
-      line-height: 1;
-      letter-spacing: -0.025em;
-    }
-
-    /*
-      Deliberate optical positioning.
-
-      The first and second lines approach one another around
-      the descender of "graph." and the ascender of "Understand".
-
-      The third line deliberately retains more breathing room.
-    */
-
-    .hero-quote .quote-second {
-      margin-top: -0.065em;
-    }
-
-    .hero-quote .quote-third {
-      margin-top: 0.105em;
-    }
-
-    .hero-subtitle {
-      max-width: 670px;
-
-      margin: 48px 0 0;
-
-      color: var(--grey);
-
-      font-family: var(--ui-font);
-      font-size: 17px;
-      line-height: 1.65;
-
-      letter-spacing: -0.005em;
-    }
-
-    .hero-meta {
+    .hero-actions {
+      margin-top: 38px;
       display: flex;
+      gap: 12px;
       flex-wrap: wrap;
-      gap: 8px 16px;
-
-      margin-top: 25px;
+      justify-content: center;
     }
 
-    .hero-meta span {
-      color: var(--grey-dark);
-
-      font-family: var(--mono-font);
-      font-size: 12px;
+    /* Homepage-only atmosphere: restrained framing around the existing content. */
+    #page-home .hero {
+      position: relative;
+      isolation: isolate;
+      border-bottom: 1px solid rgba(255,255,255,.08);
     }
 
-    .home-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
-
-      margin-top: 30px;
+    #page-home .hero::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 34px;
+      width: min(720px, 72vw);
+      height: 1px;
+      transform: translateX(-50%);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+      pointer-events: none;
     }
 
-    .feature-card {
-      padding: 26px;
-
-      min-height: 185px;
-
-      transition:
-        transform 0.3s ease,
-        background 0.3s ease,
-        border-color 0.3s ease;
+    #page-home .hero-lede {
+      color: #b7b7b7;
+      max-width: 38rem;
     }
 
-    .feature-card:hover {
-      transform: translateY(-4px);
-
-      background: rgba(25, 25, 25, 0.78);
-      border-color: var(--border-strong);
+    #page-home .section {
+      content-visibility: auto;
+      contain-intrinsic-size: 1px 420px;
     }
 
-    .feature-card h3 {
-      margin-bottom: 10px;
-
-      font-size: 19px;
-    }
-
-    .feature-card p {
-      margin: 0;
-
-      color: var(--grey);
-
-      font-size: 14px;
-      line-height: 1.65;
-    }
-
-    /* ------------------------------------------------------------
-       GENERAL CONTENT PAGES
-       ------------------------------------------------------------ */
-
-    .content-page {
-      padding: 75px 0 50px;
-    }
-
-    .page-heading {
-      max-width: 780px;
-
-      margin-bottom: 42px;
-    }
-
-    .page-heading h1 {
-      margin-bottom: 16px;
-
-      font-size: clamp(2.8rem, 6vw, 5.2rem);
-      line-height: 1.02;
-    }
-
-    .page-heading p {
-      max-width: 730px;
-
-      margin: 0;
-
-      color: var(--grey);
-
-      font-size: 17px;
-      line-height: 1.7;
-    }
-
-    .content-card {
-      padding: 30px;
-      margin-bottom: 14px;
-    }
-
-    .content-card h2 {
-      margin-bottom: 12px;
-
-      font-size: 25px;
-    }
-
-    .content-card h3 {
-      margin-top: 28px;
-      margin-bottom: 8px;
-
-      font-size: 18px;
-    }
-
-    .content-card p {
-      max-width: 850px;
-
-      margin: 0 0 15px;
-
-      font-size: 15px;
-      line-height: 1.75;
-    }
-
-    .content-card p:last-child {
-      margin-bottom: 0;
-    }
-
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 14px;
-    }
-
-    /* ------------------------------------------------------------
-       TECHNICAL TAGS
-       ------------------------------------------------------------ */
-
-    .tech-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-
-      margin-top: 20px;
-    }
-
-    .tech-tag {
+    .btn {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      border: 1px solid #d8d8d8;
+      background: #f3f3f3;
+      color: #111;
+      padding: 12px 18px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .btn.ghost {
+      background: transparent;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    .btn:hover { filter: brightness(1.08); }
+    .btn:disabled { opacity: 0.55; cursor: wait; }
 
-      padding: 7px 10px;
-
-      border: 1px solid var(--border);
-      border-radius: 9px;
-
-      background: rgba(0, 0, 0, 0.42);
-
-      color: #bdbdbd;
-
-      font-family: var(--mono-font);
-      font-size: 12px;
-
-      white-space: nowrap;
+    .query-note {
+      white-space: normal;
+      overflow: visible;
+      font-family: "Segoe UI", Arial, sans-serif;
     }
 
-    /* ------------------------------------------------------------
-       DIAGNOSIS
-       ------------------------------------------------------------ */
-
-    .diagnosis-page {
-      padding-top: 38px;
+    /* Typography hierarchy */
+    body,
+    p,
+    .hero-lede,
+    .section p,
+    .panel p,
+    .disclaimer,
+    .local-note,
+    .examples button,
+    .msg,
+    input[type="text"] {
+      font-family: "Segoe UI", Arial, sans-serif;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    .diagnosis-layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 16px;
+    h1,
+    h2,
+    h3,
+    .hero-quote {
+      font-family: Georgia, "Times New Roman", Times, serif;
+      font-kerning: normal;
+      font-feature-settings: "kern" 1, "liga" 1;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    .diagnosis-card {
-      overflow: hidden;
+    h2 {
+      margin: 0 0 14px;
+      font-family: var(--georgia);
+      font-size: clamp(1.65rem, 1.25rem + 1.3vw, 2.25rem);
+      font-weight: 400;
+      letter-spacing: 0.005em;
+      line-height: 1.28;
     }
-
-    .chat-header {
+    h3 {
+      margin: 0 0 10px;
+      font-family: var(--georgia);
+      font-size: 1.28rem;
+      font-weight: 400;
+      letter-spacing: 0.01em;
+    }
+    p { margin: 0 0 14px; color: #cfcfcf; }
+    .muted { color: var(--muted); }
+    .section p,
+    .panel p,
+    .disclaimer,
+    .local-note,
+    .examples button,
+    .msg {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-
-      padding: 20px 22px;
-
-      border-bottom: 1px solid var(--border);
+      flex-direction: column;
+      width: fit-content;
+      max-width: min(82%, 720px);
+      margin: 0 0 16px;
+      padding: 13px 15px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      color: #e4e4e4;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 15.5px;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      border: 1px solid var(--line);
+      background: rgba(12, 12, 12, 0.9);
     }
 
-    .chat-title {
-      margin: 0;
+    .msg .who {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin-bottom: 6px;
+    }
 
+    .msg[data-who="You"] {
+      margin-right: auto;
+      border-color: #262626;
+      background: rgba(18, 18, 18, 0.92);
+    }
+
+    .msg[data-who="RAGnosis"] {
+      margin-left: auto;
+      border-color: #3a3a3a;
+      background: rgba(24, 24, 24, 0.92);
+    }
+    .composer { display: flex; gap: 8px; margin-top: 10px; }
+    input[type="text"] {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: #0a0a0a;
+      color: var(--ink);
       font-size: 16px;
-      font-weight: 600;
+      outline: none;
+      font-family: "Segoe UI", Arial, sans-serif;
     }
-
-    .chat-status {
+    input[type="text"]:focus { border-color: #6a6a6a; }
+    .context-line {
+      margin: 10px 0 0;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+    .examples {
       display: flex;
-      align-items: center;
-      gap: 7px;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .examples button {
+      display: block;
+      width: 100%;
+      max-width: none;
+      text-align: left;
+      background: var(--panel);
+      color: #d0d0d0;
+      border: 1px solid var(--line);
+      padding: 12px 13px;
+      cursor: pointer;
+      font-size: 15px;
+      line-height: 1.45;
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+    .examples button:hover { border-color: #555; color: #fff; }
+    .disclaimer {
+      margin-top: 16px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .local-note {
+      display: none;
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .local-note.is-on { display: block; }
 
-      color: var(--grey);
-
-      font-family: var(--mono-font);
+    .diagram {
+      display: grid;
+      gap: 8px;
+      margin: 8px 0 18px;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    .diagram .node {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 12px 14px;
+      color: #ddd;
+    }
+    .diagram .arrow {
+      color: var(--dim);
+      padding-left: 14px;
       font-size: 11px;
     }
-
-    .status-dot {
-      width: 7px;
-      height: 7px;
-
-      border-radius: 50%;
-
-      background: #777;
-
-      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.045);
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
 
-    .status-dot.ok {
-      background: #cfcfcf;
+    .contact-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 14px;
+    }
+    .contact-list a {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      text-decoration: none;
+    }
+    .contact-list a:hover { text-decoration: underline; }
+    .contact-list span {
+      display: block;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin-bottom: 4px;
     }
 
-    .status-dot.bad {
-      background: #555;
+    pre.tree {
+      margin: 0;
+      padding: 16px 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: #cfcfcf;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.55;
+      overflow: auto;
     }
 
-    .chat {
-      height: min(620px, 68vh);
-
-      overflow-y: auto;
-
-      padding: 28px 22px;
-
-      scrollbar-width: thin;
-      scrollbar-color: #444 transparent;
-    }
-
-    .chat::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .chat::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    .chat::-webkit-scrollbar-thumb {
-      background: #444;
-      border-radius: 999px;
-    }
-
-    .message-row {
-      display: flex;
-
-      width: 100%;
-
-      margin-bottom: 25px;
-    }
-
-    .message-row.user {
-      justify-content: flex-start;
-    }
-
-    .message-row.assistant {
-      justify-content: flex-end;
-    }
-
-    .message {
-      max-width: min(78%, 760px);
-    }
-
-    .message-label {
-      margin-bottom: 7px;
-
-      color: var(--grey-dark);
-
-      font-family: var(--mono-font);
-      font-size: 10px;
-      letter-spacing: 0.08em;
+    .footer {
+      border-top: 1px solid var(--line);
+      padding: 18px 28px 28px;
+      color: var(--dim);
+      font-size: 11px;
+      font-family: var(--mono);
+      letter-spacing: 0.1em;
       text-transform: uppercase;
     }
 
-    .message-row.assistant .message-label {
-      text-align: right;
-    }
-
-    .message-body {
-      padding: 16px 18px;
-
-      border: 1px solid var(--border);
-      border-radius: 18px;
-
-      background: rgba(15, 15, 15, 0.72);
-
-      color: var(--white-soft);
-
-      font-family: var(--ui-font);
-      font-size: 15px;
-      line-height: 1.68;
-
-      overflow-wrap: anywhere;
-    }
-
-    .message-row.user .message-body {
-      border-bottom-left-radius: 6px;
-    }
-
-    .message-row.assistant .message-body {
-      border-bottom-right-radius: 6px;
-      background: rgba(25, 25, 25, 0.74);
-    }
-
-    .message-body p {
-      margin: 0 0 13px;
-    }
-
-    .message-body p:last-child {
-      margin-bottom: 0;
-    }
-
-    .message-body strong {
-      color: var(--white);
-      font-weight: 650;
-    }
-
-    .message-body em {
-      color: #d1d1d1;
-    }
-
-    .message-body h1,
-    .message-body h2,
-    .message-body h3 {
-      margin: 20px 0 9px;
-
-      color: var(--white);
-
-      font-size: 17px;
-      font-weight: 600;
-    }
-
-    .message-body h1:first-child,
-    .message-body h2:first-child,
-    .message-body h3:first-child {
-      margin-top: 0;
-    }
-
-    .message-body ul,
-    .message-body ol {
-      margin: 10px 0 15px;
-      padding-left: 24px;
-    }
-
-    .message-body li {
-      margin: 5px 0;
-      padding-left: 3px;
-    }
-
-    .message-body blockquote {
-      margin: 15px 0;
-      padding: 3px 0 3px 15px;
-
-      border-left: 2px solid #555;
-
-      color: var(--grey);
-    }
-
-    .message-body pre {
-      margin: 14px 0;
-
-      padding: 14px;
-
-      overflow-x: auto;
-
-      border: 1px solid var(--border);
-      border-radius: 10px;
-
-      background: #050505;
-
-      color: #d4d4d4;
-
-      font-family: var(--mono-font);
-      font-size: 12px;
-      line-height: 1.6;
-    }
-
-    .message-body pre code {
+    /* Visual refinement */
+    .section p,
+    .panel p {
+      display: block;
+      width: auto;
+      max-width: none;
+      margin: 0 0 14px;
       padding: 0;
-
+      white-space: normal;
       border: 0;
       background: transparent;
-
-      font-size: inherit;
+      color: #cfcfcf;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.72;
+      letter-spacing: 0.005em;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    .composer {
-      display: flex;
-      gap: 10px;
-
-      padding: 15px;
-
-      border-top: 1px solid var(--border);
-
-      background: rgba(5, 5, 5, 0.7);
-    }
-
-    .composer input {
-      min-width: 0;
-      flex: 1;
-
-      border: 1px solid var(--border-strong);
-      border-radius: 13px;
-
-      outline: none;
-
-      background: rgba(255, 255, 255, 0.045);
-
-      padding: 13px 15px;
-
-      color: var(--white);
-
-      font-family: var(--ui-font);
-      font-size: 15px;
-
-      transition:
-        border-color 0.25s ease,
-        background 0.25s ease;
-    }
-
-    .composer input::placeholder {
-      color: #6d6d6d;
-    }
-
-    .composer input:focus {
-      border-color: rgba(255, 255, 255, 0.27);
-      background: rgba(255, 255, 255, 0.065);
-    }
-
-    .send-button {
-      flex: 0 0 auto;
-
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 13px;
-
-      background: #e7e7e7;
-
-      padding: 0 20px;
-
-      color: #050505;
-
-      font-family: var(--ui-font);
-      font-size: 14px;
+    .hero-lede {
+      font-family: "Segoe UI", Arial, sans-serif;
       font-weight: 600;
-
-      cursor: pointer;
-
-      transition:
-        transform 0.2s ease,
-        background 0.2s ease;
+      letter-spacing: 0.002em;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    .send-button:hover {
-      transform: translateY(-1px);
-      background: #fff;
+    .panel,
+    .chat,
+    .diagram .node,
+    pre.tree,
+    .examples button,
+    .local-note {
+      border-radius: 16px;
     }
 
-    .send-button:disabled {
-      opacity: 0.45;
-      cursor: wait;
-      transform: none;
+    .panel {
+      padding: 24px;
+      background: rgba(12,12,12,.72);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 18px 48px rgba(0,0,0,.18);
     }
 
-    .diagnosis-disclaimer {
-      margin: 0;
-
-      padding: 17px 21px;
-
-      color: var(--grey);
-
-      font-family: var(--ui-font);
-      font-size: 12px;
-      line-height: 1.6;
-
-      border-top: 1px solid var(--border);
+    .chat {
+      border-radius: 18px;
+      background: rgba(8,8,8,.78);
     }
 
-    /* ------------------------------------------------------------
-       SANDWICH MENU
-       ------------------------------------------------------------ */
-
-    .menu-button {
-      position: fixed;
-
-      right: 24px;
-      bottom: 24px;
-
-      z-index: 20;
-
-      width: 48px;
-      height: 48px;
-
-      display: grid;
-      place-items: center;
-
-      border: 1px solid var(--border-strong);
-      border-radius: 50%;
-
-      background: rgba(8, 8, 8, 0.8);
-
-      color: var(--white);
-
-      cursor: pointer;
-
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-
-      transition:
-        transform 0.25s ease,
-        background 0.25s ease;
+    .btn,
+    .pill,
+    .chip,
+    input[type="text"] {
+      border-radius: 12px;
     }
 
-    .menu-button:hover {
-      transform: scale(1.04);
-      background: rgba(35, 35, 35, 0.88);
-    }
-
-    .menu-icon {
-      width: 18px;
-      height: 14px;
-
+    .meta-row {
       display: flex;
-      flex-direction: column;
-      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
     }
 
-    .menu-icon span {
-      width: 100%;
-      height: 1px;
-
-      background: #ddd;
-
-      transition:
-        transform 0.25s ease,
-        opacity 0.25s ease;
-    }
-
-    .menu-panel {
-      position: fixed;
-
-      right: 24px;
-      bottom: 84px;
-
-      z-index: 19;
-
-      width: min(390px, calc(100vw - 48px));
-
-      max-height: min(75vh, 680px);
-
-      overflow-y: auto;
-
-      padding: 8px;
-
-      border: 1px solid var(--border-strong);
-      border-radius: 20px;
-
-      background: rgba(7, 7, 7, 0.92);
-
-      box-shadow: 0 25px 80px rgba(0, 0, 0, 0.55);
-
-      backdrop-filter: blur(22px);
-      -webkit-backdrop-filter: blur(22px);
-
-      opacity: 0;
-      visibility: hidden;
-
-      transform: translateY(10px) scale(0.98);
-      transform-origin: bottom right;
-
-      transition:
-        opacity 0.25s ease,
-        visibility 0.25s ease,
-        transform 0.25s ease;
-    }
-
-    .menu-panel.open {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0) scale(1);
-    }
-
-    .menu-section {
-      padding: 16px;
-
-      border-bottom: 1px solid var(--border);
-    }
-
-    .menu-section:last-child {
-      border-bottom: 0;
-    }
-
-    .menu-section-title {
-      margin: 0 0 9px;
-
-      color: var(--white);
-
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .menu-section p {
-      margin: 0;
-
-      color: var(--grey);
-
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .menu-code {
-      display: inline-block;
-
-      margin-top: 10px;
-
-      color: #bcbcbc;
-
-      font-family: var(--mono-font);
-      font-size: 11px;
-      line-height: 1.55;
-
+    .meta-row span {
+      display: block;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 11.5px;
+      letter-spacing: 0.02em;
+      color: #bdbdbd;
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+      font-variant-numeric: lining-nums tabular-nums;
       white-space: normal;
     }
 
-    .prompt-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
+    .built { gap: 9px; }
+    .chip { border-radius: 999px; }
 
-      margin-top: 11px;
+    .flow-step {
+      padding: 18px 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      margin: 7px 0;
+      background: rgba(10,10,10,.58);
+    }
+    .flow-step:first-child { margin-top: 0; }
+    .flow-step:last-child { border-bottom: 1px solid var(--line); }
+
+    .query-note {
+      border-radius: 12px;
     }
 
-    .prompt {
-      border: 1px solid var(--border);
-      border-radius: 9px;
-
-      background: rgba(255, 255, 255, 0.035);
-
-      padding: 7px 9px;
-
-      color: #bdbdbd;
-
-      font-size: 12px;
-      line-height: 1.35;
+    /* Diagnosis: information is tucked behind a compact sandwich menu. */
+    .diagnosis-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin: 18px 0 14px;
     }
 
-    .health-line {
-      display: flex;
+    .menu-trigger {
+      display: inline-flex;
       align-items: center;
-      gap: 8px;
-
-      margin-top: 8px;
-
-      color: var(--grey);
-
-      font-family: var(--mono-font);
-      font-size: 11px;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 13px;
+      background: rgba(10,10,10,.78);
+      color: #e8e8e8;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      cursor: pointer;
     }
 
-    /* ------------------------------------------------------------
-       CONTACT
-       ------------------------------------------------------------ */
-
-    .contact-grid {
+    .menu-icon {
       display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
-      gap: 14px;
+      gap: 4px;
+      width: 17px;
+    }
+    .menu-icon i {
+      display: block;
+      height: 1px;
+      width: 17px;
+      background: #dcdcdc;
     }
 
-    .contact-card {
-      padding: 30px;
+    .diagnosis-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      background: rgba(0,0,0,.58);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .25s ease, visibility .25s ease;
     }
 
-    .contact-card h2 {
-      margin-bottom: 13px;
-
-      font-size: 25px;
+    .diagnosis-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(430px, calc(100vw - 24px));
+      height: 100vh;
+      z-index: 21;
+      padding: 22px;
+      overflow-y: auto;
+      background: rgba(8,8,8,.97);
+      border-left: 1px solid var(--line);
+      box-shadow: -24px 0 70px rgba(0,0,0,.38);
+      transform: translateX(105%);
+      transition: transform .32s cubic-bezier(.22,.7,.18,1);
     }
 
-    .contact-card p {
-      margin: 0;
-
-      color: var(--grey);
-
-      font-size: 15px;
-      line-height: 1.7;
+    .diagnosis-drawer.is-open { transform: translateX(0); }
+    .diagnosis-drawer-backdrop.is-open {
+      opacity: 1;
+      visibility: visible;
     }
 
-    /* ------------------------------------------------------------
-       FOOTER
-       ------------------------------------------------------------ */
-
-    footer {
-      padding: 50px 0 10px;
-
-      color: var(--grey-dark);
-
-      font-family: var(--mono-font);
-      font-size: 11px;
-      line-height: 1.6;
-    }
-
-    .footer-line {
+    .drawer-head {
       display: flex;
-      flex-wrap: wrap;
-      gap: 7px 15px;
-
+      justify-content: space-between;
       align-items: center;
+      gap: 12px;
+      padding-bottom: 16px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--line);
     }
 
-    /* ------------------------------------------------------------
-       RESPONSIVE
-       ------------------------------------------------------------ */
-
-    @media (max-width: 850px) {
-      .page-shell {
-        width: min(100% - 28px, var(--content-width));
-      }
-
-      .nav {
-        min-height: 70px;
-      }
-
-      .nav-links {
-        gap: 2px;
-      }
-
-      .nav-link {
-        padding: 7px 9px;
-        font-size: 12px;
-      }
-
-      .home {
-        padding-top: 35px;
-      }
-
-      .hero {
-        min-height: auto;
-        padding-top: 45px;
-      }
-
-      .hero-quote {
-        font-size: clamp(3.2rem, 12vw, 5.5rem);
-      }
-
-      .home-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .info-grid,
-      .contact-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .message {
-        max-width: 88%;
-      }
+    .drawer-close {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      padding: 8px 10px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      cursor: pointer;
     }
 
-    @media (max-width: 580px) {
-      .nav-links .nav-link:nth-child(3),
-      .nav-links .nav-link:nth-child(4) {
-        display: none;
-      }
+    .drawer-close:hover,
+    .menu-trigger:hover { color: #fff; border-color: #4a4a4a; }
 
-      .hero-quote {
-        font-size: clamp(2.7rem, 13.5vw, 4.2rem);
-      }
-
-      .hero-subtitle {
-        margin-top: 35px;
-        font-size: 15px;
-      }
-
-      .content-page {
-        padding-top: 45px;
-      }
-
-      .content-card,
-      .contact-card,
-      .feature-card {
-        padding: 22px;
-      }
-
-      .chat {
-        padding: 20px 13px;
-      }
-
-      .message {
-        max-width: 94%;
-      }
-
-      .composer {
-        padding: 10px;
-      }
-
-      .send-button {
-        padding: 0 15px;
-      }
-
-      .menu-button {
-        right: 17px;
-        bottom: 17px;
-      }
-
-      .menu-panel {
-        right: 17px;
-        bottom: 75px;
-
-        width: calc(100vw - 34px);
-      }
+    .diagnosis-drawer .stack { gap: 14px; }
+    .diagnosis-drawer .panel { box-shadow: none; }
+    .drawer-disclaimer .disclaimer {
+      display: block;
+      width: auto;
+      max-width: none;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      html {
-        scroll-behavior: auto;
-      }
+      .diagnosis-drawer,
+      .diagnosis-drawer-backdrop { transition: none; }
+    }
 
-      *,
-      *::before,
-      *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-      }
+    @media (max-width: 860px) {
+      .query-note { white-space: normal; overflow-x: visible; }
+      .grid-2, .diag-layout, .split { grid-template-columns: 1fr; }
+      .nav { padding: 14px 16px; }
+      .shell { width: min(1080px, calc(100% - 28px)); }
+      .chat { max-height: 48vh; min-height: 320px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto !important; }
+    }
+
+    /* Hero quote: closely matches the requested reference typography. */
+    .hero-quote {
+      font-family: Georgia, serif;
+      font-weight: 400;
+      font-style: normal;
+      font-size: clamp(3.9rem, 8.8vw, 7.25rem);
+      line-height: 0.84;
+      letter-spacing: -0.018em;
+      text-align: left;
+      max-width: 10.8em;
+      font-kerning: normal;
+      font-feature-settings: "kern" 1, "liga" 1;
+      text-rendering: geometricPrecision;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .hero-quote .q1,
+    .hero-quote .q2,
+    .hero-quote .q3 {
+      display: block;
+      line-height: 0.84;
+      margin: 0;
+      letter-spacing: -0.018em;
+    }
+
+    /* A very small overlap makes the descender of "graph." and the
+       ascender of "Understand" visually meet, as in the reference,
+       while keeping the two lower line gaps consistent. */
+    .hero-quote .q-pair {
+      display: block;
+      margin: -0.008em 0 0;
+    }
+
+    .hero-quote .q3 {
+      margin-top: 0;
     }
   </style>
 </head>
-
 <body>
+  
 
-  <canvas id="gradient-canvas"></canvas>
-  <div class="background-overlay"></div>
-  <div class="grain"></div>
+  <div class="app">
+    <header class="nav">
+      <a class="brand" href="#home" data-page="home">RAGnosis</a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#home" data-page="home">Home</a>
+        <a href="#about" data-page="about">About</a>
+        <a href="#diagnosis" data-page="diagnosis">Diagnosis</a>
+        <a href="#contact" data-page="contact">Contact</a>
+      </nav>
+    </header>
 
-  <div class="page-shell">
-
-    <!-- ==========================================================
-         NAVIGATION
-         ========================================================== -->
-
-    <nav class="nav">
-      <button class="brand" data-page="home">RAGnosis</button>
-
-      <div class="nav-links">
-        <button class="nav-link active" data-page="home">Home</button>
-        <button class="nav-link" data-page="about">About</button>
-        <button class="nav-link" data-page="diagnosis">Diagnosis</button>
-        <button class="nav-link" data-page="contact">Contact</button>
-      </div>
-    </nav>
-
-
-    <!-- ==========================================================
-         HOME
-         ========================================================== -->
-
-    <main id="home" class="page active home">
-
-      <section class="hero">
-
-        <p class="eyebrow">Biomedical knowledge retrieval</p>
-
-        <h1 class="hero-quote">
-          <span class="quote-first">Ask the graph.</span>
-          <span class="quote-second">Understand the</span>
-          <span class="quote-third">answer.</span>
-        </h1>
-
-        <p class="hero-subtitle">
-          Describe how you feel. RAGnosis will look up related graph
-          entities, then generate a follow-up or advice reply.
-          Informational only: not a diagnosis, not treatment,
-          not a substitute for clinical care.
-        </p>
-
-        <div class="hero-meta">
-          <span>Neo4j Aura</span>
-          <span>·</span>
-          <span>Cohere Chat</span>
-          <span>·</span>
-          <span>Flask</span>
-          <span>·</span>
-          <span>Render</span>
-        </div>
-
-        <div class="home-grid">
-
-          <article class="feature-card glass">
-            <p class="eyebrow">01 / Retrieval</p>
-            <h3>Search the graph first.</h3>
-            <p>
-              Each message is matched against selected biomedical
-              properties in the Neo4j Aura knowledge graph before
-              generation.
-            </p>
-          </article>
-
-          <article class="feature-card glass">
-            <p class="eyebrow">02 / Context</p>
-            <h3>Keep the conversation.</h3>
-            <p>
-              The browser maintains the on-page patient and RAGnosis
-              transcript and sends the conversation with each turn.
-            </p>
-          </article>
-
-          <article class="feature-card glass">
-            <p class="eyebrow">03 / Generation</p>
-            <h3>Ground the response.</h3>
-            <p>
-              Retrieved graph properties and the current conversation
-              are supplied to Cohere Chat to produce the response.
-            </p>
-          </article>
-
-        </div>
-
-      </section>
-
-    </main>
-
-
-    <!-- ==========================================================
-         ABOUT
-         ========================================================== -->
-
-    <main id="about" class="page content-page">
-
-      <section class="page-heading">
-        <p class="eyebrow">About RAGnosis</p>
-
-        <h1>A graph before the answer.</h1>
-
-        <p>
-          RAGnosis is a biomedical conversational interface built
-          around retrieval from a Neo4j knowledge graph followed by
-          language generation through Cohere Chat.
-        </p>
-      </section>
-
-
-      <section class="content-card glass">
-
-        <p class="eyebrow">The idea</p>
-
-        <h2>A chat that looks up the graph before it speaks.</h2>
-
-        <p>
-          You describe symptoms in the browser. Flask posts that turn,
-          plus the on-page transcript, to
-          <code>POST /chat</code>.
-          The server searches Neo4j Aura, then asks Cohere to reply
-          using the retrieved properties and the conversation so far.
-        </p>
-
-        <p>
-          The live production path is keyword retrieval, not vector
-          search. Matching uses Cypher
-          <code>CONTAINS</code>
-          over
-          <code>name</code>,
-          <code>text</code>,
-          <code>description</code>,
-          <code>disease</code>,
-          <code>symptom</code>,
-          <code>title</code>,
-          and
-          <code>canonical_name</code>,
-          limited to five nodes. Embedding fields are stripped before
-          context is sent to the model.
-        </p>
-
-      </section>
-
-
-      <div class="info-grid">
-
-        <section class="content-card glass">
-
-          <p class="eyebrow">Query path</p>
-
-          <h2>How a turn moves through the system</h2>
-
-          <h3>01 · Browser</h3>
-
-          <p>
-            <code>index.html</code> keeps the transcript as
-            patient/doctor turns. There is no durable server-side
-            conversation store.
+    <main>
+      <section id="page-home" class="page is-active">
+        <div class="hero">
+          <p class="eyebrow">Biomedical graph RAG</p>
+          <h1 class="hero-quote">
+            <span class="q1">Ask the graph.</span>
+            <span class="q-pair">
+              <span class="q2">Understand the</span>
+              <span class="q3">answer.</span>
+            </span>
+          </h1>
+          <p class="hero-lede">
+            RAGnosis is a text-only biomedical assistant. It retrieves related entities from a remote Neo4j Aura knowledge graph, then Cohere writes a follow-up or advice reply from that context.
           </p>
-
-          <h3>02 · Flask</h3>
-
-          <p>
-            <code>app.py</code> serves the UI, exposes
-            <code>GET /health</code>, and runs retrieval plus
-            generation on <code>POST /chat</code>.
-          </p>
-
-          <h3>03 · Neo4j Aura</h3>
-
-          <p>
-            A remote graph, connected lazily over
-            <code>neo4j+s</code>. The web process does not run Neo4j
-            itself.
-          </p>
-
-          <h3>04 · Cohere Chat</h3>
-
-          <p>
-            Primary model
-            <code>command-a-03-2025</code>,
-            with fallback
-            <code>command-r7b-12-2024</code>
-            if the primary model is unavailable.
-          </p>
-
-        </section>
-
-
-        <section class="content-card glass">
-
-          <p class="eyebrow">Production</p>
-
-          <h2>What is deployed</h2>
-
-          <p>
-            The Render web service is Flask, remote Neo4j Aura,
-            Cohere Chat, and this HTML UI. gunicorn binds
-            <code>0.0.0.0</code> and the host-provided
-            <code>PORT</code>.
-          </p>
-
-          <p>
-            <code>GET /health</code> reports process liveness even
-            when Aura or Cohere is down.
-            <code>/chat</code> returns the real retrieval or
-            generation error instead of a fabricated answer.
-          </p>
-
-          <p>
-            This deployment is text chat only. Voice input, speech
-            synthesis, Gradio, image upload, and notebook-only RAG
-            variants are not part of the production path.
-          </p>
-
-          <div class="tech-row">
-            <span class="tech-tag">runtime · Python 3.11</span>
-            <span class="tech-tag">start · gunicorn app:app</span>
-            <span class="tech-tag">health · GET /health</span>
+          <div class="hero-actions">
+            <a class="btn" href="#diagnosis" data-page="diagnosis">Open diagnosis</a>
+            <a class="btn ghost" href="#about" data-page="about">Read the architecture</a>
           </div>
-
-        </section>
-
-      </div>
-
-
-      <section class="content-card glass">
-
-        <p class="eyebrow">Experiments</p>
-
-        <h2>What stays off the live path</h2>
-
-        <p>
-          Notebooks, Colab pipeline exports, and milestone diagrams
-          live under <code>experiments/</code>. CLI and similarity
-          ingestion live under <code>scripts/</code>. Those files
-          document how the graph and earlier RAG prototypes were
-          built. They are not served by gunicorn.
-        </p>
-
-        <p>
-          Offline CSVs and a graph dump sit in
-          <code>Database/</code>. They are research and ingestion
-          inputs. gunicorn does not load them at startup, and they do
-          not define the live Aura graph.
-        </p>
-
-        <div class="tech-row">
-          <span class="tech-tag">experiments/ · notebooks</span>
-          <span class="tech-tag">scripts/doctor_chatbot.py</span>
-          <span class="tech-tag">scripts/EmbeddingsIngestion.py</span>
-          <span class="tech-tag">SIMILAR_TO links</span>
         </div>
 
-      </section>
-
-
-      <section class="content-card glass">
-
-        <p class="eyebrow">Built with</p>
-
-        <div class="tech-row">
-          <span class="tech-tag">Python 3.11</span>
-          <span class="tech-tag">Flask</span>
-          <span class="tech-tag">gunicorn</span>
-          <span class="tech-tag">Neo4j Aura</span>
-          <span class="tech-tag">Cohere Chat</span>
-          <span class="tech-tag">Render</span>
-        </div>
-
-      </section>
-
-    </main>
-
-
-    <!-- ==========================================================
-         DIAGNOSIS
-         ========================================================== -->
-
-    <main id="diagnosis" class="page diagnosis-page">
-
-      <section class="diagnosis-layout">
-
-        <section class="diagnosis-card glass">
-
-          <header class="chat-header">
-
+        <div class="shell">
+          <div class="section grid-2">
             <div>
-              <p class="eyebrow" style="margin-bottom: 2px;">
-                RAGnosis
-              </p>
-
-              <h1 class="chat-title">
-                Biomedical conversation
-              </h1>
+              <p class="kicker">What it does</p>
+              <h2>A chat that looks up the graph before it speaks.</h2>
             </div>
-
-            <div class="chat-status">
-              <span id="health-dot" class="status-dot"></span>
-              <span id="health-text">checking</span>
+            <div>
+              <p>You describe symptoms in the browser. Flask posts that turn, plus the on-page transcript, to <span class="mono">POST /chat</span>. The server searches Neo4j Aura, then asks Cohere to reply using the retrieved properties and the conversation so far.</p>
+              <p class="query-note">The live production path is keyword retrieval, not vector search. Matching uses Cypher <span class="mono">CONTAINS</span> over <span class="mono">name</span>, <span class="mono">text</span>, <span class="mono">description</span>, <span class="mono">disease</span>, <span class="mono">symptom</span>, <span class="mono">title</span>, and <span class="mono">canonical_name</span>, limited to five nodes. Embedding fields are stripped before context is sent to the model.</p>
             </div>
+          </div>
 
-          </header>
+          <hr class="rule" />
 
-
-          <div id="chat" class="chat">
-
-            <div class="message-row assistant">
-
-              <div class="message">
-
-                <div class="message-label">
-                  RAGnosis
+          <div class="section">
+            <p class="kicker">Query path</p>
+            <h2>How a turn moves through the system</h2>
+            <div class="flow">
+              <div class="flow-step">
+                <div class="flow-n">01</div>
+                <div>
+                  <strong>Browser</strong>
+                  <p><span class="mono">index.html</span> keeps the transcript as patient/doctor turns. There is no durable server-side conversation store.</p>
                 </div>
-
-                <div class="message-body">
-                  <p>
-                    Hello. Please tell me how you are feeling today.
-                  </p>
-                </div>
-
               </div>
-
+              <div class="flow-step">
+                <div class="flow-n">02</div>
+                <div>
+                  <strong>Flask</strong>
+                  <p><span class="mono">app.py</span> serves the UI, exposes <span class="mono">GET /health</span>, and runs retrieval plus generation on <span class="mono">POST /chat</span>.</p>
+                </div>
+              </div>
+              <div class="flow-step">
+                <div class="flow-n">03</div>
+                <div>
+                  <strong>Neo4j Aura</strong>
+                  <p>A remote graph, connected lazily over <span class="mono">neo4j+s</span>. The web process does not run Neo4j itself.</p>
+                </div>
+              </div>
+              <div class="flow-step">
+                <div class="flow-n">04</div>
+                <div>
+                  <strong>Cohere Chat</strong>
+                  <p>Primary model <span class="mono">command-a-03-2025</span>, with fallback <span class="mono">command-r7b-12-2024</span> if the primary model is unavailable.</p>
+                </div>
+              </div>
             </div>
-
           </div>
 
+          <div class="section grid-2">
+            <div>
+              <p class="kicker">Production</p>
+              <h2>What is deployed</h2>
+              <p>The Render web service is Flask, remote Neo4j Aura, Cohere Chat, and this HTML UI. gunicorn binds <span class="mono">0.0.0.0</span> and the host-provided <span class="mono">PORT</span>. <span class="mono">GET /health</span> reports process liveness even when Aura or Cohere is down. <span class="mono">/chat</span> returns the real retrieval or generation error instead of a fabricated answer.</p>
+              <p>This deployment is text chat only. Voice input, speech synthesis, Gradio, image upload, and notebook-only RAG variants are not part of the production path.</p>
+              <div class="meta-row">
+                <span>runtime · Python 3.11</span>
+                <span>start · gunicorn app:app</span>
+                <span>health · GET /health</span>
+              </div>
+            </div>
+            <div>
+              <p class="kicker">Experiments</p>
+              <h2>What stays off the live path</h2>
+              <p>Notebooks, Colab pipeline exports, and milestone diagrams live under <span class="mono">experiments/</span>. CLI and similarity ingestion live under <span class="mono">scripts/</span>. Those files document how the graph and earlier RAG prototypes were built. They are not served by gunicorn.</p>
+              <p>Offline CSVs and a graph dump sit in <span class="mono">Database/</span>. They are research and ingestion inputs. gunicorn does not load them at startup, and they do not define the live Aura graph.</p>
+              <div class="meta-row">
+                <span>experiments/ · notebooks, not gunicorn</span>
+                <span>scripts/doctor_chatbot.py · terminal chat</span>
+                <span>scripts/EmbeddingsIngestion.py · SIMILAR_TO links</span>
+              </div>
+            </div>
+          </div>
 
-          <form id="composer" class="composer">
-
-            <input
-              type="text"
-              id="message"
-              autocomplete="off"
-              placeholder="Describe how you feel..."
-              aria-label="Message RAGnosis"
-            />
-
-            <button
-              type="submit"
-              id="send"
-              class="send-button"
-            >
-              Send
-            </button>
-
-          </form>
-
-
-          <p id="disclaimer" class="diagnosis-disclaimer">
-            RAGnosis is an informational biomedical assistant.
-            It does not provide professional medical diagnosis or
-            treatment and is not a substitute for qualified clinical
-            care. Seek in-person medical help for personal health
-            decisions.
-          </p>
-
-        </section>
-
+          <div class="section">
+            <p class="kicker">Built with</p>
+            <div class="built">
+              <span class="chip">Python 3.11</span>
+              <span class="chip">Flask</span>
+              <span class="chip">gunicorn</span>
+              <span class="chip">Neo4j Aura</span>
+              <span class="chip">Cohere Chat</span>
+              <span class="chip">Render</span>
+            </div>
+          </div>
+        </div>
       </section>
 
-    </main>
+      <section id="page-about" class="page">
+        <div class="shell">
+          <p class="kicker">About</p>
+          <h2>A retrieval-augmented biomedical assistant, documented as it actually runs.</h2>
+          <p>Medical questions are easy to answer fluently and harder to ground. RAGnosis separates lookup from language: Neo4j Aura supplies a small set of related graph entities, then Cohere writes the response from that retrieved context. The application is informational and is not a substitute for professional diagnosis or treatment.</p>
 
+          <hr class="rule" />
 
-    <!-- ==========================================================
-         CONTACT
-         ========================================================== -->
+          <div class="section grid-2">
+            <div>
+              <p class="kicker">The problem</p>
+              <h3>Grounding before generation</h3>
+              <p>A language model can produce a fluent medical-sounding answer without being tied to a maintained knowledge source. RAGnosis puts retrieval before generation so the response can be informed by structured biomedical entities when relevant graph context is available.</p>
+            </div>
+            <div>
+              <p class="kicker">Why a graph</p>
+              <h3>Structured context</h3>
+              <p>Symptoms, diseases and related biomedical descriptions can be represented as graph entities with properties. The production service queries those properties with Cypher and passes the resulting context to the language model.</p>
+            </div>
+          </div>
 
-    <main id="contact" class="page content-page">
+          <div class="section">
+            <p class="kicker">Architecture</p>
+            <h3>Retrieval, then generation</h3>
+            <div class="diagram">
+              <div class="node">browser · index.html · in-page transcript</div>
+              <div class="arrow">GET / · GET /health · POST /chat</div>
+              <div class="node">flask · app.py · gunicorn · python 3.11</div>
+              <div class="split">
+                <div class="node">neo4j aura · CONTAINS · limit 5 · embeddings stripped</div>
+                <div class="node">cohere chat · command-a-03-2025 · fallback command-r7b-12-2024</div>
+              </div>
+              <div class="arrow">json · response · disclaimer · context_found</div>
+              <div class="node">web interface · text reply · status pills</div>
+            </div>
+          </div>
 
-      <section class="page-heading">
+          <div class="section grid-2">
+            <div>
+              <p class="kicker">Neo4j Aura</p>
+              <h3>Graph retrieval</h3>
+              <p>The production application connects lazily to remote Neo4j Aura. Search uses case-insensitive <span class="mono">CONTAINS</span> matching across <span class="mono">name</span>, <span class="mono">text</span>, <span class="mono">description</span>, <span class="mono">disease</span>, <span class="mono">symptom</span>, <span class="mono">title</span>, and <span class="mono">canonical_name</span>. At most five matching nodes are returned for a turn.</p>
+              <p>Embedding fields are stripped from the retrieved context before it is sent to the language model.</p>
+            </div>
+            <div>
+              <p class="kicker">Cohere</p>
+              <h3>Language generation</h3>
+              <p>Generation uses Cohere Chat with <span class="mono">command-a-03-2025</span> as the primary model and <span class="mono">command-r7b-12-2024</span> as fallback when the primary model is unavailable.</p>
+              <p>The API key is supplied through the <span class="mono">COHERE_API_KEY</span> environment variable. The application returns an error when generation is unavailable rather than inventing a diagnosis.</p>
+            </div>
+          </div>
 
-        <p class="eyebrow">Contact</p>
+          <div class="section grid-2">
+            <div>
+              <p class="kicker">Production</p>
+              <h3>What is deployed</h3>
+              <p>The live service is a Flask application hosted on Render. The service runs with gunicorn, connects to the remote Neo4j Aura instance and uses Cohere Chat for generation.</p>
+              <div class="meta-row">
+                <span>runtime · Python 3.11</span>
+                <span>start · gunicorn app:app</span>
+                <span>health · GET /health</span>
+              </div>
+            </div>
+            <div>
+              <p class="kicker">Conversation</p>
+              <h3>Browser-side transcript</h3>
+              <p>Conversation history is maintained in the browser and sent with the current turn. There is no durable server-side conversation store in the production application.</p>
+            </div>
+          </div>
 
-        <h1>Questions about RAGnosis?</h1>
+          <div class="section">
+            <p class="kicker">Research boundary</p>
+            <h3>What is not part of the live path</h3>
+            <p>The repository contains notebooks, pipeline exports, ingestion scripts and offline database material. These artifacts document research and earlier graph/RAG work, but they are not the gunicorn entry point and should not be presented as deployed production functionality.</p>
+            <div class="meta-row">
+              <span>experiments/ · notebooks and pipeline exports</span>
+              <span>scripts/ · CLI and ingestion utilities</span>
+              <span>Database/ · offline graph/export material</span>
+            </div>
+          </div>
 
-        <p>
-          RAGnosis is a research and engineering project. For
-          questions about the application, architecture, graph
-          retrieval or project development, use the project's
-          repository and associated project channels.
-        </p>
+          <div class="section">
+            <p class="kicker">Repository</p>
+            <pre class="tree">app.py              production Flask entry
+index.html          production UI
+requirements.txt    production dependencies
+render.yaml         Render service definition
+Database/           offline graph/export material
+scripts/            CLI chatbot and ingestion
+experiments/        notebooks and research exports</pre>
+          </div>
 
+          <div class="section">
+            <p class="kicker">Engineering decisions</p>
+            <h3>Simple production boundary</h3>
+            <p>Secrets are provided through environment variables. The application can start without a live Aura connection. The health endpoint can still report process liveness when dependencies are unavailable. Chat failures are returned to the client rather than replaced with fabricated answers.</p>
+            <h3>Limitations</h3>
+            <p>Production retrieval is keyword/property matching rather than semantic vector search. The context window is intentionally small, with up to five retrieved nodes. Offline repository data should not be assumed to represent the current contents of the live Aura graph.</p>
+          </div>
+        </div>
       </section>
 
+      <section id="page-contact" class="page">
+        <div class="shell">
+          <p class="kicker">Contact</p>
+          <h2>Project channels, not a clinic.</h2>
+          <p>RAGnosis is an informational biomedical assistant maintained as an open GitHub project. Use these addresses for the software, not for personal medical advice.</p>
 
-      <div class="contact-grid">
-
-        <section class="contact-card glass">
-
-          <p class="eyebrow">Project</p>
-
-          <h2>RAGnosis</h2>
-
-          <p>
-            A biomedical conversational interface combining a Flask
-            application, Neo4j Aura knowledge retrieval and Cohere
-            generation.
-          </p>
-
-          <div class="tech-row">
-            <span class="tech-tag">RAG</span>
-            <span class="tech-tag">Knowledge Graph</span>
-            <span class="tech-tag">Biomedical NLP</span>
-            <span class="tech-tag">Neo4j</span>
-            <span class="tech-tag">Cohere</span>
+          <div class="grid-2" style="margin-top: 28px;">
+            <div class="panel">
+              <ul class="contact-list">
+                <li>
+                  <span>Email</span>
+                  <a href="mailto:anumulasamarth008@gmail.com">anumulasamarth008@gmail.com</a>
+                </li>
+                <li>
+                  <span>Email</span>
+                  <a href="mailto:sathvik2903@gmail.com">sathvik2903@gmail.com</a>
+                </li>
+                <li>
+                  <span>Source</span>
+                  <a href="https://github.com/samxkevin/RAGnosis">github.com/samxkevin/RAGnosis</a>
+                </li>
+              </ul>
+            </div>
+            <div class="panel">
+              <p class="kicker">Production path</p>
+              <h3>Project note</h3>
+              <p class="muted">Production is the Flask service in <span class="mono">app.py</span>: remote Neo4j Aura keyword retrieval, Cohere generation, Render hosting. Experimental notebooks and graph-construction scripts are separate from that path.</p>
+              <p class="kicker">Intended use</p>
+              <p class="muted">Ask questions, inspect how graph context is used, and review the retrieval pipeline. Do not use replies as diagnosis or treatment. Seek in-person medical help for personal health decisions.</p>
+            </div>
           </div>
-
-        </section>
-
-
-        <section class="contact-card glass">
-
-          <p class="eyebrow">Production</p>
-
-          <h2>Live system</h2>
-
-          <p>
-            The deployed application runs as a Render web service.
-            Its production backend communicates with the remote Neo4j
-            Aura database and Cohere API.
-          </p>
-
-          <div class="tech-row">
-            <span class="tech-tag">Render</span>
-            <span class="tech-tag">Flask</span>
-            <span class="tech-tag">gunicorn</span>
-          </div>
-
-        </section>
-
-      </div>
-
+        </div>
+      </section>
     </main>
 
-
-    <footer>
-
-      <div class="footer-line">
-        <span>RAGnosis</span>
-        <span>·</span>
-        <span>Biomedical knowledge retrieval</span>
-        <span>·</span>
-        <span>Informational only</span>
-      </div>
-
-    </footer>
-
+    <footer class="footer">RAGnosis · informational only · not a substitute for clinical care</footer>
   </div>
 
-
-  <!-- ============================================================
-       DIAGNOSIS SANDWICH MENU
-       ============================================================ -->
-
-  <button
-    id="menu-button"
-    class="menu-button"
-    type="button"
-    aria-label="Open diagnosis information"
-    aria-expanded="false"
-  >
-    <span class="menu-icon">
-      <span></span>
-      <span></span>
-      <span></span>
-    </span>
-  </button>
-
-
-  <aside id="menu-panel" class="menu-panel">
-
-    <section class="menu-section">
-
-      <h2 class="menu-section-title">
-        Retrieval
-      </h2>
-
-      <p>
-        Each message is searched in Neo4j Aura with case-insensitive
-        <code>CONTAINS</code> on selected properties. At most five
-        nodes come back. Those properties, without embedding vectors,
-        are passed to Cohere with the current transcript.
-      </p>
-
-      <span class="menu-code">
-        POST /chat · context_found · limit 5
-      </span>
-
-    </section>
-
-
-    <section class="menu-section">
-
-      <h2 class="menu-section-title">
-        Prompts
-      </h2>
-
-      <p>
-        Useful questions to explore the graph-grounded conversation:
-      </p>
-
-      <div class="prompt-list">
-        <span class="prompt">
-          Sore throat and headache for two days
-        </span>
-
-        <span class="prompt">
-          Feverish and tired
-        </span>
-
-        <span class="prompt">
-          Persistent cough
-        </span>
-      </div>
-
-    </section>
-
-
-    <section class="menu-section">
-
-      <h2 class="menu-section-title">
-        Status
-      </h2>
-
-      <p>
-        Reports whether Neo4j is configured and connected, and
-        whether a Cohere key is present.
-      </p>
-
-      <div class="health-line">
-        <span id="menu-neo-dot" class="status-dot"></span>
-        <span id="menu-neo">Neo4j: checking</span>
-      </div>
-
-      <div class="health-line">
-        <span id="menu-cohere-dot" class="status-dot"></span>
-        <span id="menu-cohere">Cohere: checking</span>
-      </div>
-
-    </section>
-
-  </aside>
-
-
   <script>
-    /* ============================================================
-       MONOCHROME MOUSE-REACTIVE GRADIENT
-       ============================================================ */
+    (function () {
+      "use strict";
 
-    const canvas = document.getElementById("gradient-canvas");
-    const ctx = canvas.getContext("2d", {
-      alpha: false,
-      desynchronized: true
-    });
+      /* Reliable CSS gradient: slowly rotate its angle toward the pointer. */
+      (function initGradient() {
+        var targetAngle = 135;
+        var currentAngle = 135;
 
-    let width = 0;
-    let height = 0;
-    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+        document.addEventListener("mousemove", function (e) {
+          var x = e.clientX / Math.max(window.innerWidth, 1);
+          var y = e.clientY / Math.max(window.innerHeight, 1);
+          targetAngle = 45 + (x + y) * 135;
+        }, { passive: true });
 
-    const pointer = {
-      targetX: 0.5,
-      targetY: 0.5,
+        function lerp() {
+          currentAngle += (targetAngle - currentAngle) * 0.02;
+          document.body.style.setProperty("--gx", currentAngle + "deg");
+          requestAnimationFrame(lerp);
+        }
 
-      x: 0.5,
-      y: 0.5,
+        try {
+          if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            requestAnimationFrame(lerp);
+          }
+        } catch (err) {
+          requestAnimationFrame(lerp);
+        }
+      })();
 
-      lastMove: performance.now()
-    };
+      var pages = ["home", "about", "diagnosis", "contact"];
 
-    const orbA = {
-      x: 0.32,
-      y: 0.38,
-      targetX: 0.32,
-      targetY: 0.38
-    };
-
-    const orbB = {
-      x: 0.73,
-      y: 0.68,
-      targetX: 0.73,
-      targetY: 0.68
-    };
-
-    const orbC = {
-      x: 0.55,
-      y: 0.17,
-      targetX: 0.55,
-      targetY: 0.17
-    };
-
-    let reducedMotion =
-      window.matchMedia &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    function resizeCanvas() {
-      width = window.innerWidth;
-      height = window.innerHeight;
-
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-
-      canvas.style.width = width + "px";
-      canvas.style.height = height + "px";
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-
-    resizeCanvas();
-
-    window.addEventListener("resize", resizeCanvas);
-
-    if (!reducedMotion) {
-      window.addEventListener(
-        "pointermove",
-        (event) => {
-          pointer.targetX = event.clientX / width;
-          pointer.targetY = event.clientY / height;
-          pointer.lastMove = performance.now();
-        },
-        { passive: true }
-      );
-    }
-
-    function clamp(value, min, max) {
-      return Math.max(min, Math.min(max, value));
-    }
-
-    function lerp(a, b, amount) {
-      return a + (b - a) * amount;
-    }
-
-    function radialLight(
-      x,
-      y,
-      radius,
-      inner,
-      outer,
-      alpha
-    ) {
-      const gradient = ctx.createRadialGradient(
-        x,
-        y,
-        0,
-        x,
-        y,
-        radius
-      );
-
-      gradient.addColorStop(
-        0,
-        `rgba(${inner}, ${inner}, ${inner}, ${alpha})`
-      );
-
-      gradient.addColorStop(
-        0.38,
-        `rgba(${outer}, ${outer}, ${outer}, ${alpha * 0.48})`
-      );
-
-      gradient.addColorStop(
-        1,
-        `rgba(${outer}, ${outer}, ${outer}, 0)`
-      );
-
-      ctx.fillStyle = gradient;
-      ctx.fillRect(
-        x - radius,
-        y - radius,
-        radius * 2,
-        radius * 2
-      );
-    }
-
-    function animateGradient(time) {
-      /*
-        Very slow interpolation means a fast mouse movement becomes
-        a smooth field movement rather than an abrupt jump.
-      */
-
-      pointer.x = lerp(pointer.x, pointer.targetX, 0.018);
-      pointer.y = lerp(pointer.y, pointer.targetY, 0.018);
-
-      if (!reducedMotion) {
-        const t = time * 0.00005;
-
-        orbA.targetX =
-          0.5 +
-          Math.sin(t * 1.7) * 0.23 +
-          (pointer.x - 0.5) * 0.26;
-
-        orbA.targetY =
-          0.48 +
-          Math.cos(t * 1.3) * 0.22 +
-          (pointer.y - 0.5) * 0.22;
-
-        orbB.targetX =
-          0.5 +
-          Math.cos(t * 1.1) * 0.27 +
-          (pointer.x - 0.5) * 0.17;
-
-        orbB.targetY =
-          0.53 +
-          Math.sin(t * 1.5) * 0.25 +
-          (pointer.y - 0.5) * 0.19;
-
-        orbC.targetX =
-          0.5 +
-          Math.sin(t * 0.85 + 2.2) * 0.30 +
-          (pointer.x - 0.5) * 0.20;
-
-        orbC.targetY =
-          0.34 +
-          Math.cos(t * 0.92 + 1.5) * 0.26 +
-          (pointer.y - 0.5) * 0.20;
+      function showPage(id) {
+        if (pages.indexOf(id) === -1) id = "home";
+        var i, el, links;
+        for (i = 0; i < pages.length; i++) {
+          el = document.getElementById("page-" + pages[i]);
+          if (el) el.classList.toggle("is-active", pages[i] === id);
+        }
+        links = document.querySelectorAll("[data-page]");
+        for (i = 0; i < links.length; i++) {
+          links[i].classList.toggle("is-active", links[i].getAttribute("data-page") === id);
+        }
+        if (id === "diagnosis") {
+          var input = document.getElementById("message");
+          if (input) input.focus();
+        }
+        window.scrollTo(0, 0);
       }
 
-      orbA.x = lerp(orbA.x, orbA.targetX, 0.008);
-      orbA.y = lerp(orbA.y, orbA.targetY, 0.008);
+      function pageFromHash() {
+        showPage((location.hash || "#home").replace("#", ""));
+      }
 
-      orbB.x = lerp(orbB.x, orbB.targetX, 0.007);
-      orbB.y = lerp(orbB.y, orbB.targetY, 0.007);
-
-      orbC.x = lerp(orbC.x, orbC.targetX, 0.006);
-      orbC.y = lerp(orbC.y, orbC.targetY, 0.006);
-
-      /*
-        Base black field.
-      */
-
-      ctx.fillStyle = "#000000";
-      ctx.fillRect(0, 0, width, height);
-
-      /*
-        Very subtle central grey atmosphere.
-      */
-
-      const base = ctx.createRadialGradient(
-        width * (0.5 + (pointer.x - 0.5) * 0.12),
-        height * (0.5 + (pointer.y - 0.5) * 0.12),
-        0,
-        width * 0.5,
-        height * 0.5,
-        Math.max(width, height) * 0.78
-      );
-
-      base.addColorStop(0, "rgba(48,48,48,0.20)");
-      base.addColorStop(0.42, "rgba(20,20,20,0.12)");
-      base.addColorStop(1, "rgba(0,0,0,0)");
-
-      ctx.fillStyle = base;
-      ctx.fillRect(0, 0, width, height);
-
-      /*
-        Large grayscale lights.
-
-        Only black, white and grey are used.
-      */
-
-      radialLight(
-        orbA.x * width,
-        orbA.y * height,
-        Math.max(width, height) * 0.43,
-        105,
-        60,
-        0.18
-      );
-
-      radialLight(
-        orbB.x * width,
-        orbB.y * height,
-        Math.max(width, height) * 0.37,
-        82,
-        45,
-        0.15
-      );
-
-      radialLight(
-        orbC.x * width,
-        orbC.y * height,
-        Math.max(width, height) * 0.34,
-        125,
-        55,
-        0.11
-      );
-
-      /*
-        A soft pointer-driven highlight.
-
-        This is intentionally slow and heavily blurred through the
-        radial gradient so it feels like the background is reacting
-        to the mouse rather than following it.
-      */
-
-      const px = pointer.x * width;
-      const py = pointer.y * height;
-
-      radialLight(
-        px,
-        py,
-        Math.max(width, height) * 0.24,
-        135,
-        65,
-        0.07
-      );
-
-      requestAnimationFrame(animateGradient);
-    }
-
-    requestAnimationFrame(animateGradient);
-
-
-    /* ============================================================
-       PAGE NAVIGATION
-       ============================================================ */
-
-    const pages = document.querySelectorAll(".page");
-    const navLinks = document.querySelectorAll("[data-page]");
-
-    function showPage(pageName) {
-      pages.forEach((page) => {
-        page.classList.toggle(
-          "active",
-          page.id === pageName
-        );
+      document.addEventListener("click", function (e) {
+        var a = e.target.closest ? e.target.closest("[data-page]") : null;
+        if (!a) return;
+        var id = a.getAttribute("data-page");
+        if (!id) return;
+        e.preventDefault();
+        if (location.hash !== "#" + id) location.hash = id;
+        else showPage(id);
       });
+      window.addEventListener("hashchange", pageFromHash);
+      pageFromHash();
 
-      document.querySelectorAll(".nav-link").forEach((link) => {
-        link.classList.toggle(
-          "active",
-          link.dataset.page === pageName
-        );
-      });
+      var IS_FILE = location.protocol === "file:";
+      var conversation = [];
+      var chatEl = document.getElementById("chat");
+      var inputEl = document.getElementById("message");
+      var sendBtn = document.getElementById("send");
+      var localNote = document.getElementById("local-note");
+      if (IS_FILE && localNote) localNote.classList.add("is-on");
 
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth"
-      });
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
 
-      closeMenu();
-    }
+      function addMessage(who, text) {
+        var wrap = document.createElement("div");
+        wrap.className = "msg";
+        wrap.setAttribute("data-who", who);
+        wrap.innerHTML = "<div class=\"who\">" + escapeHtml(who) + "</div>" + escapeHtml(text);
+        chatEl.appendChild(wrap);
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
 
-    navLinks.forEach((link) => {
-      link.addEventListener("click", () => {
-        showPage(link.dataset.page);
-      });
-    });
+      function setPill(id, ok, label) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = label;
+        el.className = "pill " + (ok ? "ok" : "bad");
+      }
 
+      function setContext(text) {
+        var el = document.getElementById("context-status");
+        if (el) el.textContent = text;
+      }
 
-    /* ============================================================
-       SAFE MARKDOWN RENDERER
-       ============================================================ */
-
-    function escapeHtml(value) {
-      return String(value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    }
-
-    function inlineMarkdown(value) {
-      let text = escapeHtml(value);
-
-      /*
-        Protect inline code before applying other formatting.
-      */
-
-      const codeParts = [];
-
-      text = text.replace(
-        /`([^`\n]+)`/g,
-        (_, code) => {
-          const token = `@@CODE_${codeParts.length}@@`;
-
-          codeParts.push(
-            `<code class="inline-code">${code}</code>`
-          );
-
-          return token;
-        }
-      );
-
-      /*
-        Bold.
-      */
-
-      text = text.replace(
-        /\*\*([^*\n]+)\*\*/g,
-        "<strong>$1</strong>"
-      );
-
-      /*
-        Italic.
-      */
-
-      text = text.replace(
-        /(^|[^*])\*([^*\n]+)\*(?!\*)/g,
-        "$1<em>$2</em>"
-      );
-
-      /*
-        Restore code.
-      */
-
-      codeParts.forEach((code, index) => {
-        text = text.replace(
-          `@@CODE_${index}@@`,
-          code
-        );
-      });
-
-      return text;
-    }
-
-    function renderMarkdown(markdown) {
-      const source = String(markdown || "")
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n");
-
-      const lines = source.split("\n");
-
-      let html = "";
-
-      let paragraph = [];
-      let listType = null;
-      let listItems = [];
-
-      function flushParagraph() {
-        if (!paragraph.length) {
+      async function loadHealth() {
+        if (IS_FILE) {
+          setPill("neo4j-status", false, "Neo4j: local preview");
+          setPill("cohere-status", false, "Cohere: local preview");
+          setPill("model-status", false, "Model: —");
           return;
         }
-
-        const content = paragraph
-          .join(" ")
-          .trim();
-
-        if (content) {
-          html += `<p>${inlineMarkdown(content)}</p>`;
+        try {
+          var res = await fetch("/health");
+          var data = await res.json();
+          var neo = data.neo4j || {};
+          var coh = data.cohere || {};
+          setPill("neo4j-status", !!neo.connected, neo.connected ? "Neo4j: connected" : "Neo4j: unavailable");
+          setPill("cohere-status", !!coh.configured, coh.configured ? "Cohere: configured" : "Cohere: missing key");
+          setPill("model-status", !!coh.model, "Model: " + (coh.model || "—"));
+          if (data.disclaimer) document.getElementById("disclaimer").textContent = data.disclaimer;
+        } catch (err) {
+          setPill("neo4j-status", false, "Neo4j: status unknown");
+          setPill("cohere-status", false, "Cohere: status unknown");
+          setPill("model-status", false, "Model: —");
         }
-
-        paragraph = [];
       }
 
-      function flushList() {
-        if (!listItems.length) {
-          return;
-        }
-
-        const tag = listType || "ul";
-
-        html += `<${tag}>`;
-
-        listItems.forEach((item) => {
-          html += `<li>${inlineMarkdown(item)}</li>`;
-        });
-
-        html += `</${tag}>`;
-
-        listType = null;
-        listItems = [];
-      }
-
-      function isOrdered(line) {
-        return /^\s*\d+\.\s+/.test(line);
-      }
-
-      function isUnordered(line) {
-        return /^\s*[-*+]\s+/.test(line);
-      }
-
-      for (let i = 0; i < lines.length; i++) {
-        const raw = lines[i];
-        const line = raw.trim();
-
-        if (!line) {
-          flushParagraph();
-          flushList();
-          continue;
-        }
-
-        /*
-          Fenced code blocks.
-        */
-
-        if (line.startsWith("```")) {
-          flushParagraph();
-          flushList();
-
-          const codeLines = [];
-          i++;
-
-          while (
-            i < lines.length &&
-            !lines[i].trim().startsWith("```")
-          ) {
-            codeLines.push(lines[i]);
-            i++;
+      async function sendMessage() {
+        var msg = (inputEl.value || "").trim();
+        if (!msg) return;
+        inputEl.value = "";
+        addMessage("You", msg);
+        sendBtn.disabled = true;
+        setContext("Graph context: requesting");
+        try {
+          if (IS_FILE) {
+            addMessage("RAGnosis", "Chat needs the Flask server. Open this UI from that origin to use /chat.");
+            setContext("Graph context: unavailable in file preview");
+            return;
           }
-
-          html += `
-            <pre><code>${escapeHtml(
-              codeLines.join("\n")
-            )}</code></pre>
-          `;
-
-          continue;
-        }
-
-        /*
-          Headings.
-        */
-
-        const heading = line.match(
-          /^(#{1,3})\s+(.+)$/
-        );
-
-        if (heading) {
-          flushParagraph();
-          flushList();
-
-          const level = heading[1].length;
-
-          html += `
-            <h${level}>
-              ${inlineMarkdown(heading[2])}
-            </h${level}>
-          `;
-
-          continue;
-        }
-
-        /*
-          Blockquotes.
-        */
-
-        if (line.startsWith("> ")) {
-          flushParagraph();
-          flushList();
-
-          html += `
-            <blockquote>
-              ${inlineMarkdown(line.slice(2))}
-            </blockquote>
-          `;
-
-          continue;
-        }
-
-        /*
-          Ordered list.
-        */
-
-        if (isOrdered(line)) {
-          flushParagraph();
-
-          if (listType !== "ol") {
-            flushList();
-            listType = "ol";
-          }
-
-          listItems.push(
-            line.replace(/^\s*\d+\.\s+/, "")
-          );
-
-          continue;
-        }
-
-        /*
-          Unordered list.
-        */
-
-        if (isUnordered(line)) {
-          flushParagraph();
-
-          if (listType !== "ul") {
-            flushList();
-            listType = "ul";
-          }
-
-          listItems.push(
-            line.replace(/^\s*[-*+]\s+/, "")
-          );
-
-          continue;
-        }
-
-        /*
-          Normal prose.
-        */
-
-        if (listType) {
-          flushList();
-        }
-
-        paragraph.push(line);
-      }
-
-      flushParagraph();
-      flushList();
-
-      return html || "<p></p>";
-    }
-
-
-    /* ============================================================
-       CHAT
-       ============================================================ */
-
-    const conversation = [];
-
-    const chatEl = document.getElementById("chat");
-    const inputEl = document.getElementById("message");
-    const sendBtn = document.getElementById("send");
-    const composer = document.getElementById("composer");
-
-    function addMessage(who, text, type) {
-      const row = document.createElement("div");
-
-      row.className =
-        "message-row " +
-        (type === "user" ? "user" : "assistant");
-
-      const message = document.createElement("div");
-      message.className = "message";
-
-      const label = document.createElement("div");
-      label.className = "message-label";
-      label.textContent = who;
-
-      const body = document.createElement("div");
-      body.className = "message-body";
-
-      if (type === "user") {
-        body.textContent = text;
-      } else {
-        body.innerHTML = renderMarkdown(text);
-      }
-
-      message.appendChild(label);
-      message.appendChild(body);
-
-      row.appendChild(message);
-      chatEl.appendChild(row);
-
-      chatEl.scrollTop = chatEl.scrollHeight;
-    }
-
-    function addLoadingMessage() {
-      const row = document.createElement("div");
-
-      row.className =
-        "message-row assistant";
-
-      row.id = "loading-message";
-
-      const message = document.createElement("div");
-      message.className = "message";
-
-      const label = document.createElement("div");
-      label.className = "message-label";
-      label.textContent = "RAGnosis";
-
-      const body = document.createElement("div");
-      body.className = "message-body";
-
-      body.innerHTML = `
-        <p class="muted">
-          Looking up the graph...
-        </p>
-      `;
-
-      message.appendChild(label);
-      message.appendChild(body);
-
-      row.appendChild(message);
-      chatEl.appendChild(row);
-
-      chatEl.scrollTop = chatEl.scrollHeight;
-    }
-
-    function removeLoadingMessage() {
-      const loading =
-        document.getElementById("loading-message");
-
-      if (loading) {
-        loading.remove();
-      }
-    }
-
-    async function sendMessage() {
-      const msg = inputEl.value.trim();
-
-      if (!msg || sendBtn.disabled) {
-        return;
-      }
-
-      inputEl.value = "";
-
-      addMessage("You", msg, "user");
-
-      sendBtn.disabled = true;
-
-      addLoadingMessage();
-
-      try {
-        const response = await fetch("/chat", {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json"
-          },
-
-          body: JSON.stringify({
-            message: msg,
-            conversation: conversation
-          })
-        });
-
-        const data = await response.json();
-
-        removeLoadingMessage();
-
-        const reply =
-          data.response ||
-          "No response returned.";
-
-        addMessage(
-          "RAGnosis",
-          reply,
-          "assistant"
-        );
-
-        conversation.push({
-          patient: msg,
-          doctor: reply
-        });
-
-      } catch (error) {
-        removeLoadingMessage();
-
-        addMessage(
-          "RAGnosis",
-          "The chat service could not be reached. Please try again.",
-          "assistant"
-        );
-
-      } finally {
-        sendBtn.disabled = false;
-        inputEl.focus();
-      }
-    }
-
-    composer.addEventListener(
-      "submit",
-      (event) => {
-        event.preventDefault();
-        sendMessage();
-      }
-    );
-
-
-    /* ============================================================
-       HEALTH
-       ============================================================ */
-
-    const healthDot =
-      document.getElementById("health-dot");
-
-    const healthText =
-      document.getElementById("health-text");
-
-    const menuNeoDot =
-      document.getElementById("menu-neo-dot");
-
-    const menuNeo =
-      document.getElementById("menu-neo");
-
-    const menuCohereDot =
-      document.getElementById("menu-cohere-dot");
-
-    const menuCohere =
-      document.getElementById("menu-cohere");
-
-    const disclaimer =
-      document.getElementById("disclaimer");
-
-    function setHealthStatus(
-      dot,
-      text,
-      ok,
-      label
-    ) {
-      dot.classList.remove("ok", "bad");
-
-      dot.classList.add(
-        ok ? "ok" : "bad"
-      );
-
-      text.textContent = label;
-    }
-
-    async function loadHealth() {
-      try {
-        const response =
-          await fetch("/health", {
-            cache: "no-store"
+          var res = await fetch("/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: msg, conversation: conversation })
           });
-
-        if (!response.ok) {
-          throw new Error("Health request failed");
-        }
-
-        const data =
-          await response.json();
-
-        const neoConnected =
-          Boolean(
-            data.neo4j &&
-            data.neo4j.connected
-          );
-
-        const cohereConfigured =
-          Boolean(
-            data.cohere &&
-            data.cohere.configured
-          );
-
-        setHealthStatus(
-          healthDot,
-          healthText,
-          neoConnected,
-          neoConnected
-            ? "Neo4j connected"
-            : "Neo4j unavailable"
-        );
-
-        setHealthStatus(
-          menuNeoDot,
-          menuNeo,
-          neoConnected,
-          neoConnected
-            ? "Neo4j: connected"
-            : "Neo4j: unavailable"
-        );
-
-        setHealthStatus(
-          menuCohereDot,
-          menuCohere,
-          cohereConfigured,
-          cohereConfigured
-            ? "Cohere: configured"
-            : "Cohere: missing key"
-        );
-
-        if (data.disclaimer) {
-          disclaimer.textContent =
-            data.disclaimer;
-        }
-
-      } catch (error) {
-
-        setHealthStatus(
-          healthDot,
-          healthText,
-          false,
-          "status unavailable"
-        );
-
-        setHealthStatus(
-          menuNeoDot,
-          menuNeo,
-          false,
-          "Neo4j: status unavailable"
-        );
-
-        setHealthStatus(
-          menuCohereDot,
-          menuCohere,
-          false,
-          "Cohere: status unavailable"
-        );
-      }
-    }
-
-    loadHealth();
-
-
-    /* ============================================================
-       SANDWICH MENU
-       ============================================================ */
-
-    const menuButton =
-      document.getElementById("menu-button");
-
-    const menuPanel =
-      document.getElementById("menu-panel");
-
-    function openMenu() {
-      menuPanel.classList.add("open");
-
-      menuButton.setAttribute(
-        "aria-expanded",
-        "true"
-      );
-    }
-
-    function closeMenu() {
-      menuPanel.classList.remove("open");
-
-      menuButton.setAttribute(
-        "aria-expanded",
-        "false"
-      );
-    }
-
-    menuButton.addEventListener(
-      "click",
-      (event) => {
-        event.stopPropagation();
-
-        if (
-          menuPanel.classList.contains("open")
-        ) {
-          closeMenu();
-        } else {
-          openMenu();
+          var data = await res.json();
+          var reply = data.response || "No response returned.";
+          addMessage("RAGnosis", reply);
+          conversation.push({ patient: msg, doctor: reply });
+          if (typeof data.context_found === "boolean") {
+            setContext(data.context_found ? "Graph context: found" : "Graph context: none for this turn");
+          } else {
+            setContext("Graph context: not reported");
+          }
+          if (data.disclaimer) document.getElementById("disclaimer").textContent = data.disclaimer;
+        } catch (err) {
+          addMessage("RAGnosis", "The chat service could not be reached. Please try again.");
+          setContext("Graph context: request failed");
+        } finally {
+          sendBtn.disabled = false;
+          inputEl.focus();
         }
       }
-    );
 
-    document.addEventListener(
-      "click",
-      (event) => {
-        if (
-          menuPanel.classList.contains("open") &&
-          !menuPanel.contains(event.target) &&
-          !menuButton.contains(event.target)
-        ) {
-          closeMenu();
-        }
+      if (sendBtn) sendBtn.addEventListener("click", sendMessage);
+      if (inputEl) {
+        inputEl.addEventListener("keydown", function (event) {
+          if (event.key === "Enter") sendMessage();
+        });
       }
-    );
 
-
-    /* ============================================================
-       KEYBOARD SHORTCUT
-       ============================================================ */
-
-    document.addEventListener(
-      "keydown",
-      (event) => {
-        if (event.key === "Escape") {
-          closeMenu();
-        }
+      var examples = document.querySelectorAll(".examples button");
+      for (var i = 0; i < examples.length; i++) {
+        examples[i].addEventListener("click", function () {
+          inputEl.value = this.getAttribute("data-fill") || "";
+          inputEl.focus();
+        });
       }
-    );
+
+      (function initDiagnosisMenu() {
+        var trigger = document.getElementById("diagnosis-menu-trigger");
+        var drawer = document.getElementById("diagnosis-drawer");
+        var backdrop = document.getElementById("diagnosis-drawer-backdrop");
+        var close = document.getElementById("diagnosis-drawer-close");
+        if (!trigger || !drawer || !backdrop || !close) return;
+
+        function setOpen(open) {
+          drawer.classList.toggle("is-open", open);
+          backdrop.classList.toggle("is-open", open);
+          drawer.setAttribute("aria-hidden", open ? "false" : "true");
+          trigger.setAttribute("aria-expanded", open ? "true" : "false");
+          document.body.style.overflow = open ? "hidden" : "";
+        }
+
+        trigger.addEventListener("click", function () { setOpen(true); });
+        close.addEventListener("click", function () { setOpen(false); });
+        backdrop.addEventListener("click", function () { setOpen(false); });
+        document.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") setOpen(false);
+        });
+      })();
+
+      loadHealth();
+    })();
   </script>
-
 </body>
 </html>
