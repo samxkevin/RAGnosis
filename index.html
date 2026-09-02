@@ -1,3 +1,235 @@
+No not wensley... numbers must not be like: the attached image, please select another font...
+I agree with all the things...
+01a05e06-52db-7cc2-9b2b-58232f8fe394(3).patch
+File
+
+Check:
+
+I'll start from the attached `index.html`, inspect the current UI and repo facts, then implement the quote, canvas gradient, and content updates locally without touching GitHub.
+
+The attached upload isn’t on disk, so I’ll implement the black/grey/white RAGnosis page from the spec and the repo, keep `/chat` and `/health`, and leave GitHub untouched.
+
+Updated `index.html` only. Nothing was pushed to GitHub.
+
+**Quote.** The couplet stays italic serif. Both lines share one size and line box; the first line is opened slightly with tracking, the second is tightened, with a short even gap so they read as one headline.
+
+**Gradient.** A fixed full-viewport canvas paints a black field plus large grayscale radial lights. The lights lerp toward the pointer (a slower orb trails on fast moves) and keep a slow drift when the pointer stops. `file://` works: no modules, no backend, no extra assets. `prefers-reduced-motion` freezes it.
+
+**Content.** Home, About, Diagnosis, and Contact now describe the real production path: Flask, Neo4j Aura keyword `CONTAINS` retrieval, Cohere Chat, Render, in-browser transcript. Experiments/scripts are labeled as off the live path. No invented metrics.
+
+**Chat.** `GET /health` and `POST /chat` are unchanged. Status pills, `context_found`, and the medical disclaimer are still wired. Opening the file locally shows a preview note instead of calling the API.
+
+Flask on this machine still returns `/` 200, `/health` 200, and `/chat` 503 when Aura is unset.
+
+Please check the attached dif too...
+
+index.html
+File
+Can you, yeah you, please set the homepage similar to style you gave, keeping the info there, also have smoother fonts everywhere please except that quote please...
+not italic also, but bold and big the way you did before... also you may segoe ui whereever(you know what are the appropriate places, it looks good too) there are paragraphs...
+
+Unbold the quote, please check the space downwards from ask to understand isn't symmetrical that to that of the distance downwards from understands to answer and please set this one line...
+
+CONTAINS
+ over 
+name
+, 
+text
+, 
+description
+, 
+disease
+, 
+symptom
+, 
+title
+, and 
+canonical_name
+, limited to five nodes. Embedding fields are stripped before context is sent to the model.
+
+Leave everything else as is please...
+
+Set the quote like this in the attached image only change that
+Can you please align the p and d correctly, the must subtly connect to each other.. not like the one shown in image
+I am sorry but can you mae the quote tlike shown in image, especially regarding that p and d in that webapp, html file
+
+Great. Now that the RAGnosis page is finalised, we should stop touching the UI and move to deployment verification, then interview preparation.
+
+I suggest this order:
+
+Push the final index.html to GitHub
+Make sure we're on the correct branch/repository.
+Commit only the intended UI changes.
+Push to main if that is the deployment branch.
+Verify Render
+Let Render auto-deploy the commit.
+Open the production URL.
+Check /health.
+Test the chat with 2 to 3 queries.
+Confirm Neo4j Aura and Cohere are actually working.
+Final RAGnosis production check
+Home
+About
+Diagnosis
+Contact
+Sandwich menu
+Gradient/mouse interaction
+Responsive layout
+Chat alignment, RAGnosis right and user left
+No API keys exposed in the frontend
+Then freeze RAGnosis.
+No more cosmetic tweaking unless something is genuinely broken.
+Resume/interview preparation
+Since we have Ryan and Regen coming up, we can resume the preparation sequence we established:
+projects → programming/OOP → SQL → APIs/full-stack → cloud/Docker → testing/CI/CD → DSA → company-specific questions → HR/managerial.
+
+And importantly, we should use RAGnosis itself as one of our strongest project explanations, because we now have a live deployed system rather than just a repository.
+
+If the final HTML is already saved locally, the immediate next step is GitHub commit + push, then we verify the Render deployment.
+
+Today 7:44 PM
+How to redeploy?
+
+Since Render is already connected to samxkevin/RAGnosis and the service is configured for auto-deploy on commits, the simplest way is:
+
+1. Put the final HTML into the repo
+
+Make sure the final file is actually named:
+
+C:\P\RAGnosis\index.html
+
+If your final version is currently the downloaded RAGnosis_index_quote_corrected_v2.html, rename/copy it to index.html in the repo, replacing the existing one.
+
+2. Commit and push
+
+From C:\P\RAGnosis, use GitHub Desktop since your terminal wasn't recognizing Git earlier.
+
+In GitHub Desktop:
+
+Open RAGnosis
+Confirm the changed file is index.html
+Review the diff
+Commit message:
+Refine RAGnosis interface
+Click Commit to main
+Click Push origin
+3. Render redeploys automatically
+
+Because your Render service has Auto-Deploy: On Commit, the push should trigger a new deployment automatically.
+
+Go to your Render service and watch:
+
+Deploys → latest deploy
+
+You should see something like:
+
+Building
+↓
+Live
+4. Then test
+
+Open:
+
+RAGnosis production site
+
+Then check:
+
+/
+
+and:
+
+/health
+
+For the health endpoint, we want Neo4j to show connected and Cohere configured.
+
+Important: Don't click "Deploy web service" manually just yet. A Git push is the cleanest redeployment path and keeps the deployment tied to the final commit.
+
+inrender we still see the old webpage
+
+Right, that means the final index.html has not reached the GitHub commit that Render is deploying, or Render hasn't deployed that commit yet.
+
+Let's verify it in the safest order.
+
+1. First check GitHub Desktop
+
+Open GitHub Desktop → RAGnosis.
+
+Look at the Changes tab.
+
+We should see:
+
+index.html
+
+as the changed file.
+
+If index.html is not there, then the final HTML we generated is still only in Downloads/runtime and hasn't replaced:
+
+C:\P\RAGnosis\index.html
+2. Replace the repo's index.html
+
+Our final version is:
+
+Download the final index.html
+
+Copy that file into:
+
+C:\P\RAGnosis\
+
+and rename it:
+
+index.html
+
+Replace the existing one.
+
+3. Check GitHub Desktop again
+
+Now GitHub Desktop should show:
+
+1 changed file
+
+index.html
+
+Open the diff and make sure the new design is actually there.
+
+Then:
+
+Commit to main
+
+with:
+
+Refine RAGnosis interface
+
+Then:
+
+Push origin
+4. Check Render
+
+After pushing, Render should detect the commit automatically.
+
+Go to the RAGnosis service → Deploys.
+
+We need to see a new deployment created after the push.
+
+If it doesn't start automatically, click:
+
+Manual Deploy → Deploy latest commit
+
+Do not change the build/start commands.
+
+5. If Render says "Live" but still shows the old page
+
+Then we'll check the deployed commit SHA against GitHub. Also do a hard refresh:
+
+Windows Chrome/Brave:
+
+Ctrl + Shift + R
+
+or open the site in an incognito window.
+
+The key thing right now is: don't redeploy blindly. First let's make sure C:\P\RAGnosis\index.html contains our final version and that GitHub Desktop sees it as a change.
+
+If you show me the GitHub Desktop Changes screen, we can verify that before pushing.
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,8 +262,78 @@
       --nums: "Times New Roman", Times, serif;
     }
 
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: #050505;
+      color: var(--ink);
+    }
+
+    body {
+      position: relative;
+      isolation: isolate;
+      background:
+        linear-gradient(
+          var(--gx, 135deg),
+          #050505,
+          #111111,
+          #242424,
+          #111111,
+          #050505
+        );
+      background-size: 300% 300%;
+      animation: ragDrift 30s ease-in-out infinite;
+      transition: background 1.5s ease;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -12%;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(
+          circle at 22% 28%,
+          rgba(255,255,255,.075),
+          transparent 31%
+        ),
+        radial-gradient(
+          circle at 78% 72%,
+          rgba(180,180,180,.045),
+          transparent 36%
+        );
+      filter: blur(50px);
+      opacity: .9;
+      animation: ragAmbient 22s ease-in-out infinite alternate;
+      transform: translate3d(0,0,0);
+    }
+
+    @keyframes ragDrift {
+      0%, 100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
+    }
+
+    @keyframes ragAmbient {
+      0%   { transform: translate3d(-2%, 1%, 0) scale(1); }
+      100% { transform: translate3d(2%, -1%, 0) scale(1.04); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      body {
+        animation: none;
+        transition: none;
+      }
+
+      body::before {
+        animation: none;
+      }
+    }
+
     * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
     html {
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
@@ -76,6 +378,7 @@
       position: relative;
       z-index: 1;
       min-height: 100vh;
+      background: transparent;
     }
 
     .nav {
@@ -148,7 +451,7 @@
       color: var(--muted);
     }
 
-    /* Three-line quote. Left aligned with equal vertical rhythm. */
+    /* Three-line quote. Left aligned with a subtle serif ligature-like join. */
     .hero-quote {
       margin: 0;
       font-family: Georgia, serif;
@@ -158,7 +461,7 @@
       color: #f7f7f7;
       font-kerning: normal;
       font-feature-settings: "kern" 1, "liga" 1;
-      letter-spacing: 0.008em;
+      letter-spacing: 0;
       text-align: left;
       max-width: 11.2em;
     }
@@ -168,13 +471,26 @@
     .hero-quote .q3 {
       display: block;
       margin: 0;
-      line-height: 1.12;
-      letter-spacing: 0.008em;
+      font: inherit;
+      letter-spacing: inherit;
+    }
+
+    .hero-quote .q1 {
+      line-height: 1.08;
     }
 
     .hero-quote .q-pair {
       display: block;
-      margin: 0;
+      margin: -0.015em 0 0;
+    }
+
+    .hero-quote .q2 {
+      line-height: 1.08;
+    }
+
+    .hero-quote .q3 {
+      line-height: 1.08;
+      margin-left: 0.015em;
     }
 
     /* Smoother supporting typography */
@@ -328,7 +644,7 @@
       color: var(--ink);
       font-size: 16px;
       outline: none;
-      font-family: var(--georgia);
+      font-family: "Segoe UI", Arial, sans-serif;
     }
     input[type="text"]:focus { border-color: #6a6a6a; }
     .context-line {
@@ -346,15 +662,18 @@
       margin-top: 8px;
     }
     .examples button {
+      display: block;
+      width: 100%;
+      max-width: none;
       text-align: left;
       background: var(--panel);
       color: #d0d0d0;
       border: 1px solid var(--line);
-      padding: 10px 12px;
+      padding: 12px 13px;
       cursor: pointer;
       font-size: 15px;
       line-height: 1.45;
-      font-family: var(--georgia);
+      font-family: "Segoe UI", Arial, sans-serif;
     }
     .examples button:hover { border-color: #555; color: #fff; }
     .disclaimer {
@@ -377,9 +696,10 @@
       display: grid;
       gap: 8px;
       margin: 8px 0 18px;
-      font-family: var(--mono);
+      font-family: "Consolas", "Courier New", monospace;
       font-size: 12px;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.02em;
+      font-variant-numeric: lining-nums tabular-nums;
     }
     .diagram .node {
       border: 1px solid var(--line);
@@ -445,6 +765,209 @@
       text-transform: uppercase;
     }
 
+    /* Visual refinement */
+    .section p,
+    .panel p {
+      display: block;
+      width: auto;
+      max-width: none;
+      margin: 0 0 14px;
+      padding: 0;
+      white-space: normal;
+      border: 0;
+      background: transparent;
+      color: #cfcfcf;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.72;
+      letter-spacing: 0.005em;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .hero-lede {
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.002em;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .panel,
+    .chat,
+    .diagram .node,
+    pre.tree,
+    .examples button,
+    .local-note {
+      border-radius: 16px;
+    }
+
+    .panel {
+      padding: 24px;
+      background: rgba(12,12,12,.72);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 18px 48px rgba(0,0,0,.18);
+    }
+
+    .chat {
+      border-radius: 18px;
+      background: rgba(8,8,8,.78);
+    }
+
+    .btn,
+    .pill,
+    .chip,
+    input[type="text"] {
+      border-radius: 12px;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .meta-row span {
+      display: block;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 11.5px;
+      letter-spacing: 0.02em;
+      color: #bdbdbd;
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+      font-variant-numeric: lining-nums tabular-nums;
+      white-space: normal;
+    }
+
+    .built { gap: 9px; }
+    .chip { border-radius: 999px; }
+
+    .flow-step {
+      padding: 18px 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      margin: 7px 0;
+      background: rgba(10,10,10,.58);
+    }
+    .flow-step:first-child { margin-top: 0; }
+    .flow-step:last-child { border-bottom: 1px solid var(--line); }
+
+    .query-note {
+      border-radius: 12px;
+    }
+
+    /* Diagnosis: information is tucked behind a compact sandwich menu. */
+    .diagnosis-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin: 18px 0 14px;
+    }
+
+    .menu-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 13px;
+      background: rgba(10,10,10,.78);
+      color: #e8e8e8;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .menu-icon {
+      display: grid;
+      gap: 4px;
+      width: 17px;
+    }
+    .menu-icon i {
+      display: block;
+      height: 1px;
+      width: 17px;
+      background: #dcdcdc;
+    }
+
+    .diagnosis-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      background: rgba(0,0,0,.58);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .25s ease, visibility .25s ease;
+    }
+
+    .diagnosis-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(430px, calc(100vw - 24px));
+      height: 100vh;
+      z-index: 21;
+      padding: 22px;
+      overflow-y: auto;
+      background: rgba(8,8,8,.97);
+      border-left: 1px solid var(--line);
+      box-shadow: -24px 0 70px rgba(0,0,0,.38);
+      transform: translateX(105%);
+      transition: transform .32s cubic-bezier(.22,.7,.18,1);
+    }
+
+    .diagnosis-drawer.is-open { transform: translateX(0); }
+    .diagnosis-drawer-backdrop.is-open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .drawer-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 16px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .drawer-close {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      padding: 8px 10px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .drawer-close:hover,
+    .menu-trigger:hover { color: #fff; border-color: #4a4a4a; }
+
+    .diagnosis-drawer .stack { gap: 14px; }
+    .diagnosis-drawer .panel { box-shadow: none; }
+    .drawer-disclaimer .disclaimer {
+      display: block;
+      width: auto;
+      max-width: none;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .diagnosis-drawer,
+      .diagnosis-drawer-backdrop { transition: none; }
+    }
+
     @media (max-width: 860px) {
       .query-note { white-space: normal; overflow-x: visible; }
       .grid-2, .diag-layout, .split { grid-template-columns: 1fr; }
@@ -457,33 +980,57 @@
       * { scroll-behavior: auto !important; }
     }
 
-    /* Exact hero quote presentation requested. */
+    /* Hero quote: reference-matched line positioning. */
     .hero-quote {
       font-family: Georgia, serif;
       font-weight: 400;
       font-style: normal;
       font-size: clamp(3.9rem, 8.8vw, 7.25rem);
-      line-height: 0.9;
+      line-height: 1;
       letter-spacing: -0.018em;
       text-align: left;
       max-width: 10.8em;
+      font-kerning: normal;
+      font-feature-settings: "kern" 1, "liga" 1;
+      text-rendering: geometricPrecision;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     .hero-quote .q1,
     .hero-quote .q2,
     .hero-quote .q3 {
-      line-height: 0.9;
+      display: block;
       margin: 0;
+      padding: 0;
+      line-height: 1;
       letter-spacing: -0.018em;
     }
 
+    /* Keep the first two lines visually close at the p/d junction,
+       while restoring the distinctly larger gap before "answer.". */
+    .hero-quote .q2 {
+      margin-top: -0.065em;
+    }
+
+    .hero-quote .q3 {
+      margin-top: 0.105em;
+    }
+    /* A very small overlap makes the descender of "graph." and the
+       ascender of "Understand" visually meet, as in the reference,
+       while keeping the two lower line gaps consistent. */
     .hero-quote .q-pair {
-      margin: 0;
+      display: block;
+      margin: -0.008em 0 0;
+    }
+
+    .hero-quote .q3 {
+      margin-top: 0;
     }
   </style>
 </head>
 <body>
-  <canvas id="ambient" aria-hidden="true"></canvas>
+  
 
   <div class="app">
     <header class="nav">
@@ -706,9 +1253,28 @@ experiments/        notebooks and pipeline exports (not deployed)</pre>
                 <button class="btn" id="send">Send</button>
               </div>
               <p id="context-status" class="context-line">Graph context: waiting</p>
-              <p class="disclaimer" id="disclaimer">RAGnosis is an informational biomedical assistant. It does not provide professional medical diagnosis or treatment and is not a substitute for qualified clinical care. Seek in-person medical help for personal health decisions.</p>
+
             </div>
-            <aside class="stack">
+          <div class="diagnosis-toolbar">
+            <button type="button" class="menu-trigger" id="diagnosis-menu-trigger" aria-controls="diagnosis-drawer" aria-expanded="false">
+              <span class="menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+              Info
+            </button>
+          </div>
+          <div class="diagnosis-drawer-backdrop" id="diagnosis-drawer-backdrop"></div>
+          <aside class="diagnosis-drawer" id="diagnosis-drawer" aria-hidden="true">
+            <div class="drawer-head">
+              <div>
+                <p class="kicker" style="margin-bottom:4px;">RAGnosis</p>
+                <h3 style="margin:0;">System information</h3>
+              </div>
+              <button type="button" class="drawer-close" id="diagnosis-drawer-close">Close</button>
+            </div>
+            <div class="stack">
+              <div class="panel drawer-disclaimer">
+                <p class="kicker">Use responsibly</p>
+                <p class="disclaimer" id="disclaimer">RAGnosis is an informational biomedical assistant. It does not provide professional medical diagnosis or treatment and is not a substitute for qualified clinical care. Seek in-person medical help for personal health decisions.</p>
+              </div>
               <div class="panel">
                 <p class="kicker">Retrieval</p>
                 <h3>How lookup works</h3>
@@ -733,7 +1299,9 @@ experiments/        notebooks and pipeline exports (not deployed)</pre>
                 <h3>Status</h3>
                 <p class="muted">Reports whether Neo4j is configured and connected, and whether a Cohere key is present. Light grayscale means ready. Dim grayscale means not.</p>
               </div>
-            </aside>
+            </div>
+          </aside>
+
           </div>
         </div>
       </section>
@@ -780,114 +1348,30 @@ experiments/        notebooks and pipeline exports (not deployed)</pre>
     (function () {
       "use strict";
 
-      /* Full-screen canvas field. Inline JS so file:// works. */
-      (function initAmbient() {
-        var canvas = document.getElementById("ambient");
-        if (!canvas || !canvas.getContext) return;
-        var ctx = canvas.getContext("2d", { alpha: false });
-        if (!ctx) return;
+      /* Reliable CSS gradient: slowly rotate its angle toward the pointer. */
+      (function initGradient() {
+        var targetAngle = 135;
+        var currentAngle = 135;
 
-        var reduce = false;
+        document.addEventListener("mousemove", function (e) {
+          var x = e.clientX / Math.max(window.innerWidth, 1);
+          var y = e.clientY / Math.max(window.innerHeight, 1);
+          targetAngle = 45 + (x + y) * 135;
+        }, { passive: true });
+
+        function lerp() {
+          currentAngle += (targetAngle - currentAngle) * 0.02;
+          document.body.style.setProperty("--gx", currentAngle + "deg");
+          requestAnimationFrame(lerp);
+        }
+
         try {
-          reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        } catch (err) {}
-
-        var w = 1, h = 1, dpr = 1;
-        var x1 = 0, y1 = 0, x2 = 0, y2 = 0;
-        var tx = 0, ty = 0;
-        var intensity = 0.85;
-        var lastMove = 0;
-        var hasPointer = false;
-        var prev = 0;
-
-        function resize() {
-          dpr = Math.min(window.devicePixelRatio || 1, 2);
-          w = window.innerWidth || 1;
-          h = window.innerHeight || 1;
-          canvas.width = Math.max(1, Math.floor(w * dpr));
-          canvas.height = Math.max(1, Math.floor(h * dpr));
-          canvas.style.width = w + "px";
-          canvas.style.height = h + "px";
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          if (!hasPointer) {
-            tx = w * 0.58;
-            ty = h * 0.3;
-            x1 = tx;
-            y1 = ty;
-            x2 = w * 0.42;
-            y2 = h * 0.48;
+          if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            requestAnimationFrame(lerp);
           }
+        } catch (err) {
+          requestAnimationFrame(lerp);
         }
-
-        function blob(cx, cy, radius, alpha) {
-          var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-          g.addColorStop(0, "rgba(255,255,255," + alpha + ")");
-          g.addColorStop(0.18, "rgba(220,220,220," + (alpha * 0.5) + ")");
-          g.addColorStop(0.45, "rgba(110,110,110," + (alpha * 0.16) + ")");
-          g.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.fillStyle = g;
-          ctx.fillRect(0, 0, w, h);
-        }
-
-        function paint() {
-          ctx.globalCompositeOperation = "source-over";
-          ctx.fillStyle = "#000000";
-          ctx.fillRect(0, 0, w, h);
-
-          var R = Math.max(w, h) * 0.95;
-          ctx.globalCompositeOperation = "lighter";
-          blob(x1, y1, R, 0.36 * intensity);
-          blob(x2, y2, R * 1.05, 0.22 * intensity);
-          blob(w * 0.1, h * 0.86, R * 0.62, 0.1);
-          blob(w * 0.9, h * 0.14, R * 0.48, 0.08);
-          ctx.globalCompositeOperation = "source-over";
-        }
-
-        function frame(now) {
-          prev = now;
-          var idle = !hasPointer || (now - lastMove > 160);
-          var t = now * 0.00009;
-          var driftX = Math.sin(t) * w * 0.2 + Math.sin(t * 0.37) * w * 0.08;
-          var driftY = Math.cos(t * 0.71) * h * 0.14 + Math.cos(t * 0.21) * h * 0.06;
-          var ax = idle ? w * 0.5 + driftX : tx;
-          var ay = idle ? h * 0.36 + driftY : ty;
-
-          var k1 = idle ? 0.04 : 0.13;
-          var k2 = idle ? 0.018 : 0.038;
-          x1 += (ax - x1) * k1;
-          y1 += (ay - y1) * k1;
-          x2 += (ax - x2) * k2;
-          y2 += (ay - y2) * k2;
-
-          var lag = Math.hypot(ax - x2, ay - y2);
-          var want = idle ? 0.72 : Math.min(1.15, 0.82 + lag / 1100);
-          intensity += (want - intensity) * 0.09;
-          paint();
-          requestAnimationFrame(frame);
-        }
-
-        function onMove(e) {
-          hasPointer = true;
-          tx = e.clientX;
-          ty = e.clientY;
-          lastMove = performance.now();
-        }
-
-        resize();
-        window.addEventListener("resize", resize);
-        window.addEventListener("pointermove", onMove, { passive: true });
-        window.addEventListener("pointerdown", onMove, { passive: true });
-
-        if (reduce) {
-          x1 = w * 0.44;
-          y1 = h * 0.3;
-          x2 = w * 0.64;
-          y2 = h * 0.5;
-          intensity = 0.6;
-          paint();
-          return;
-        }
-        requestAnimationFrame(frame);
       })();
 
       var pages = ["home", "about", "diagnosis", "contact"];
@@ -1036,6 +1520,29 @@ experiments/        notebooks and pipeline exports (not deployed)</pre>
           inputEl.focus();
         });
       }
+
+      (function initDiagnosisMenu() {
+        var trigger = document.getElementById("diagnosis-menu-trigger");
+        var drawer = document.getElementById("diagnosis-drawer");
+        var backdrop = document.getElementById("diagnosis-drawer-backdrop");
+        var close = document.getElementById("diagnosis-drawer-close");
+        if (!trigger || !drawer || !backdrop || !close) return;
+
+        function setOpen(open) {
+          drawer.classList.toggle("is-open", open);
+          backdrop.classList.toggle("is-open", open);
+          drawer.setAttribute("aria-hidden", open ? "false" : "true");
+          trigger.setAttribute("aria-expanded", open ? "true" : "false");
+          document.body.style.overflow = open ? "hidden" : "";
+        }
+
+        trigger.addEventListener("click", function () { setOpen(true); });
+        close.addEventListener("click", function () { setOpen(false); });
+        backdrop.addEventListener("click", function () { setOpen(false); });
+        document.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") setOpen(false);
+        });
+      })();
 
       loadHealth();
     })();
