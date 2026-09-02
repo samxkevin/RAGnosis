@@ -1,9 +1,9 @@
 # RAGnosis
 
-[![GitHub stars](https://img.shields.io/github/stars/your-username/your-repo?style=for-the-badge&logo=github&color=yellow)](https://github.com/your-username/your-repo/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/your-username/your-repo?style=for-the-badge&logo=github&color=blue)](https://github.com/your-username/your-repo/network)
-[![GitHub issues](https://img.shields.io/github/issues/your-username/your-repo?style=for-the-badge&logo=github&color=red)](https://github.com/your-username/your-repo/issues)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](https://opensource.org/licenses/MIT)   
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.x-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/Live-Demo-000000?style=for-the-badge&logo=render&logoColor=white)](https://ragnosis-nwst.onrender.com/)
 
 RAGnosis is a text-only biomedical retrieval-augmented chatbot. A user describes symptoms in a browser chat. Flask retrieves related entities from a remote [Neo4j Aura](https://neo4j.com/product/auradb/) knowledge graph, then [Cohere](https://docs.cohere.com/) generates a follow-up or advice reply from that context.
 
