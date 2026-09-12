@@ -1,3 +1,6 @@
+# To activate CI, move this file to .github/workflows/ci.yml
+# (requires a token/app with the "workflows" permission to push).
+
 name: CI
 
 on:
