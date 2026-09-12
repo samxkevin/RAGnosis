@@ -16,14 +16,7 @@ def main() -> int:
     result = MultimodalRAGService().run(
         MultimodalRequest(question=args.question, image_path=args.image)
     )
-    print(json.dumps({
-        "answer": result.answer,
-        "modality": result.modality,
-        "observations": [o.__dict__ for o in result.observations],
-        "evidence": [e.__dict__ for e in result.evidence],
-        "limitations": result.limitations,
-        "vision_model": result.model,
-    }, indent=2))
+    print(json.dumps(result.to_dict(), indent=2))
     return 0
 
 

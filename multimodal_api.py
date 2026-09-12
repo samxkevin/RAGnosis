@@ -1,27 +1,41 @@
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from pathlib import Path
 
 from flask import Flask, jsonify, request
 
+from multimodal.config import MultimodalConfig
+from multimodal.image import ImageValidationError, SUPPORTED_IMAGE_TYPES
 from multimodal.schemas import MultimodalRequest
 from multimodal.service import MultimodalRAGService
 
+logger = logging.getLogger("ragnosis.multimodal_api")
+
+CONFIG = MultimodalConfig.from_env()
 app = Flask(__name__)
-service = MultimodalRAGService()
-MAX_UPLOAD_BYTES = int(os.getenv("MULTIMODAL_MAX_UPLOAD_BYTES", str(12 * 1024 * 1024)))
+# Reject oversized uploads at the WSGI layer before buffering the whole body.
+app.config["MAX_CONTENT_LENGTH"] = CONFIG.max_upload_bytes
+service = MultimodalRAGService(CONFIG)
 
 
 @app.get("/health")
 def health():
-    return jsonify({
-        "status": "ok",
-        "service": "ragnosis-multimodal",
-        "vision_configured": service.vision.configured(),
-        "generation_configured": bool(service.cohere_key),
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "service": "ragnosis-multimodal",
+            "vision_configured": service.vision.configured(),
+            "generation_configured": service.generator.configured(),
+        }
+    )
+
+
+@app.errorhandler(413)
+def too_large(_error):
+    return jsonify({"error": "image exceeds upload limit"}), 413
 
 
 @app.post("/analyze")
@@ -33,29 +47,29 @@ def analyze():
     if image is None:
         return jsonify({"error": "image is required"}), 400
 
-    image.stream.seek(0, 2)
-    size = image.stream.tell()
-    image.stream.seek(0)
-    if size > MAX_UPLOAD_BYTES:
-        return jsonify({"error": "image exceeds upload limit"}), 413
-
     suffix = Path(image.filename or "image.png").suffix.lower() or ".png"
+    if suffix not in SUPPORTED_IMAGE_TYPES:
+        return jsonify(
+            {
+                "error": (
+                    f"unsupported image type '{suffix}'. supported: "
+                    f"{', '.join(sorted(SUPPORTED_IMAGE_TYPES))}"
+                )
+            }
+        ), 400
+
     temp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
             image.save(handle)
             temp_path = handle.name
         result = service.run(MultimodalRequest(question=question, image_path=temp_path))
-        return jsonify({
-            "answer": result.answer,
-            "modality": result.modality,
-            "observations": [o.__dict__ for o in result.observations],
-            "evidence": [e.__dict__ for e in result.evidence],
-            "limitations": result.limitations,
-            "vision_model": result.model,
-        })
-    except Exception as exc:
-        app.logger.exception("multimodal analysis failed")
+        return jsonify(result.to_dict())
+    except ImageValidationError as exc:
+        # Client-side problem with the uploaded image -> 400, not 502.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001 - upstream/provider failure
+        logger.exception("multimodal analysis failed")
         return jsonify({"error": str(exc)}), 502
     finally:
         if temp_path:

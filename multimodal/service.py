@@ -1,63 +1,191 @@
 from __future__ import annotations
 
 import json
-import os
-from typing import Any
+import logging
+from typing import Any, Protocol
 
-import cohere
-
+from .config import MultimodalConfig
+from .image import inspect_image
 from .retrieval import BiomedicalRetriever
-from .schemas import MultimodalRequest, MultimodalResponse
-from .safety import build_system_instruction
+from .safety import build_system_instruction, validate_response
+from .schemas import (
+    Evidence,
+    ImageObservation,
+    MultimodalRequest,
+    MultimodalResponse,
+    RetrievalStatus,
+)
 from .vision import VisionProvider
+
+logger = logging.getLogger("ragnosis.multimodal")
+
+BASE_LIMITATIONS = (
+    "Image observations are not diagnoses or confirmed clinical findings.",
+    "Retrieved literature is supporting evidence, not patient-specific medical advice.",
+    "Clinical decisions require qualified professional review of the complete patient record.",
+)
+
+
+class TextGenerator(Protocol):
+    """Minimal interface the service needs from a text generation backend."""
+
+    def generate(self, prompt: str) -> tuple[str, str]:  # (text, model_used)
+        ...
+
+    def configured(self) -> bool:
+        ...
+
+
+class CohereGenerator:
+    """Cohere-backed generator with primary/fallback model handling.
+
+    Imports the Cohere SDK lazily so the package remains importable (and unit
+    testable via an injected generator) without the dependency present.
+    """
+
+    def __init__(self, config: MultimodalConfig | None = None) -> None:
+        self.config = config or MultimodalConfig.from_env()
+        self._client = None
+
+    def configured(self) -> bool:
+        return bool(self.config.cohere_api_key)
+
+    def _get_client(self):
+        if not self.configured():
+            raise RuntimeError(
+                "COHERE_API_KEY is not configured for multimodal RAG generation."
+            )
+        if self._client is None:
+            import cohere  # local import keeps the dependency optional at import time
+
+            self._client = cohere.Client(self.config.cohere_api_key)
+        return self._client
+
+    def _chat(self, prompt: str, model: str) -> str:
+        response = self._get_client().chat(model=model, message=prompt, temperature=0.1)
+        text = getattr(response, "text", "") or ""
+        return text.strip()
+
+    def generate(self, prompt: str) -> tuple[str, str]:
+        client_model = self.config.cohere_model
+        try:
+            text = self._chat(prompt, client_model)
+            if text:
+                return text, client_model
+            raise RuntimeError("The generation provider returned an empty response.")
+        except Exception as exc:  # noqa: BLE001 - decide fallback vs. re-raise below
+            message = str(exc).lower()
+            model_error = any(
+                token in message
+                for token in ("model", "not found", "decommissioned", "unknown")
+            )
+            fallback = self.config.cohere_fallback_model
+            if model_error and fallback and fallback != client_model:
+                logger.warning("Primary generation model failed; trying fallback")
+                text = self._chat(prompt, fallback)
+                if text:
+                    return text, fallback
+            raise
 
 
 class MultimodalRAGService:
-    def __init__(self) -> None:
-        self.vision = VisionProvider()
-        self.retriever = BiomedicalRetriever()
-        self.cohere_key = os.getenv("COHERE_API_KEY", "")
-        self.cohere_model = os.getenv("COHERE_MULTIMODAL_RAG_MODEL", "command-a-03-2025")
-        self._cohere: cohere.Client | None = None
+    """Orchestrates validation -> vision -> retrieval -> grounded generation.
 
-    def _client(self) -> cohere.Client:
-        if not self.cohere_key:
-            raise RuntimeError("COHERE_API_KEY is not configured for multimodal RAG generation.")
-        if self._cohere is None:
-            self._cohere = cohere.Client(self.cohere_key)
-        return self._cohere
+    Each collaborator is injectable so the full pipeline can be exercised
+    offline. In production, defaults read configuration from the environment.
+    """
+
+    def __init__(
+        self,
+        config: MultimodalConfig | None = None,
+        vision: VisionProvider | None = None,
+        retriever: BiomedicalRetriever | None = None,
+        generator: TextGenerator | None = None,
+    ) -> None:
+        self.config = config or MultimodalConfig.from_env()
+        self.vision = vision or VisionProvider(self.config)
+        self.retriever = retriever or BiomedicalRetriever(self.config)
+        self.generator = generator or CohereGenerator(self.config)
+
+    # Kept for backward compatibility with existing callers/health checks.
+    @property
+    def cohere_key(self) -> str:
+        return self.config.cohere_api_key
+
+    @property
+    def cohere_model(self) -> str:
+        return self.config.cohere_model
 
     def run(self, request: MultimodalRequest) -> MultimodalResponse:
-        observations = []
-        vision_model = None
-        if request.image_path:
-            observations, vision_model = self.vision.observe(request.image_path, request.question)
+        warnings: list[str] = []
+        observations: list[ImageObservation] = []
+        vision_model: str | None = None
+        image_metadata: dict[str, Any] = {}
 
-        evidence = self.retriever.search(request.question, observations)
-        prompt = self._build_prompt(request, observations, evidence)
-        response = self._client().chat(model=self.cohere_model, message=prompt, temperature=0.1)
-        answer = getattr(response, "text", "").strip()
+        if request.image_path:
+            image_metadata = inspect_image(
+                request.image_path, max_pixels=self.config.max_image_pixels
+            )
+            observations, vision_model = self.vision.observe(
+                request.image_path, request.question
+            )
+
+        evidence, retrieval_status = self._retrieve(request.question, observations)
+
+        prompt = self._build_prompt(request, observations, evidence, retrieval_status)
+        answer, generation_model = self.generator.generate(prompt)
         if not answer:
             raise RuntimeError("The generation provider returned an empty response.")
 
-        limitations = [
-            "Image observations are not diagnoses or confirmed clinical findings.",
-            "Retrieved literature is supporting evidence, not patient-specific medical advice.",
-            "Clinical decisions require qualified professional review of the complete patient record.",
-        ]
+        # Deterministic post-generation guard: verify the model did not overstep
+        # the safety contract or cite evidence it was never given.
+        validation = validate_response(answer, evidence, observations)
+        warnings.extend(validation.warnings)
+
         return MultimodalResponse(
-            answer=answer,
+            answer=validation.text,
             modality=request.modality,
             observations=observations,
             evidence=evidence,
-            limitations=limitations,
+            limitations=list(BASE_LIMITATIONS),
             model=vision_model,
+            generation_model=generation_model,
+            retrieval_status=retrieval_status,
+            warnings=warnings,
+            image_metadata=image_metadata,
         )
 
-    def _build_prompt(self, request: MultimodalRequest, observations: list[Any], evidence: list[Any]) -> str:
-        observation_text = json.dumps([o.__dict__ for o in observations], indent=2)
-        evidence_text = json.dumps([e.__dict__ for e in evidence], indent=2)
+    def _retrieve(
+        self, question: str, observations: list[ImageObservation]
+    ) -> tuple[list[Evidence], RetrievalStatus]:
+        query_present = bool((question or "").strip() or observations)
+        if not query_present:
+            return [], "skipped"
+        try:
+            evidence = self.retriever.search(
+                question, observations, raise_on_error=True
+            )
+        except Exception as exc:  # noqa: BLE001 - retrieval is non-fatal by design
+            logger.warning("Evidence retrieval unavailable: %s", exc)
+            return [], "unavailable"
+        return (evidence, "ok") if evidence else ([], "empty")
+
+    def _build_prompt(
+        self,
+        request: MultimodalRequest,
+        observations: list[ImageObservation],
+        evidence: list[Evidence],
+        retrieval_status: RetrievalStatus,
+    ) -> str:
+        observation_text = json.dumps([o.to_dict() for o in observations], indent=2)
+        evidence_text = json.dumps([e.to_dict() for e in evidence], indent=2)
         conversation = json.dumps(request.conversation[-8:], indent=2)
+        retrieval_note = {
+            "ok": "Literature evidence was retrieved and is provided below.",
+            "empty": "No relevant literature was found; do not invent citations.",
+            "unavailable": "Literature retrieval was unavailable; do not invent citations.",
+            "skipped": "No literature retrieval was performed.",
+        }[retrieval_status]
         return f"""{build_system_instruction()}
 
 USER QUESTION:
@@ -72,5 +200,12 @@ MODEL IMAGE OBSERVATIONS:
 RETRIEVED BIOMEDICAL EVIDENCE:
 {evidence_text}
 
-Write a concise, evidence-grounded response. Explicitly separate image observations from conclusions supported by literature. If evidence does not support a conclusion, say so. Never turn a visual observation into a definitive diagnosis. Include PubMed links when they are present in the evidence metadata.
+RETRIEVAL STATUS: {retrieval_status} - {retrieval_note}
+
+Write a concise, evidence-grounded response. Explicitly separate image
+observations from conclusions supported by literature. Only cite PubMed records
+that appear in the retrieved evidence above; never invent a PMID or source. If
+the evidence does not support a conclusion, say so. Never turn a visual
+observation into a definitive diagnosis. Include PubMed links when they are
+present in the evidence metadata.
 """

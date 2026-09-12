@@ -137,9 +137,31 @@ It holds Colab RAG notebooks, graph enrichment and reconstruction exports, and m
 
 `scripts/` is also outside the web entry point. `EmbeddingsIngestion.py` reads `NEO4J_*` from the environment and CSVs from `Database/EnrichmentReport` (or `ENRICHMENT_DIR`). It is a maintenance utility, not a request handler.
 
+## Multimodal track
+
+The `multimodal/` package extends RAGnosis with an evidence-grounded image + question
+workflow: image validation and fingerprinting, a provider-agnostic vision model,
+PubMed evidence retrieval, Cohere grounded generation, and a deterministic safety
+validator that flags overconfident diagnoses and fabricated citations. It runs as a
+separate API (`multimodal_api.py`, default port `8001`) and is documented in
+[`docs/MULTIMODAL_ARCHITECTURE.md`](docs/MULTIMODAL_ARCHITECTURE.md).
+
+```bash
+python multimodal_api.py
+curl http://localhost:8001/health
+```
+
 ## Checks
 
-This repository does not include an automated test suite. After install, confirm:
+Automated tests cover the multimodal track and run fully offline (no API keys, no
+network) via injected collaborators:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+After install, also confirm the production web app manually:
 
 - `GET /` returns the chat page
 - `GET /health` returns HTTP 200 with `status: ok` even when Neo4j and Cohere are unset
