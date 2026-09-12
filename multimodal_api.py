@@ -6,6 +6,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request
 
+from multimodal.schemas import MultimodalRequest
 from multimodal.service import MultimodalRAGService
 
 app = Flask(__name__)
@@ -44,10 +45,7 @@ def analyze():
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
             image.save(handle)
             temp_path = handle.name
-        result = service.run(__import__("multimodal.schemas", fromlist=["MultimodalRequest"]).MultimodalRequest(
-            question=question,
-            image_path=temp_path,
-        ))
+        result = service.run(MultimodalRequest(question=question, image_path=temp_path))
         return jsonify({
             "answer": result.answer,
             "modality": result.modality,
