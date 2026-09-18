@@ -9,4 +9,9 @@ __all__ = [
     "retrieval",
     "safety",
     "service",
+    "location",
+    "routing",
+    "health_schemas",
+    "health_intelligence",
+    "agent",
 ]

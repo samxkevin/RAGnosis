@@ -84,6 +84,18 @@ WITHHELD_DIAGNOSIS_MESSAGE = (
     "full clinical context."
 )
 
+# Response substituted when a personal medical determination is detected (§18).
+WITHHELD_PERSONAL_MESSAGE = (
+    "The generated answer was withheld because it made a personal medical "
+    "determination about you (such as asserting you are or will be infected, or "
+    "presenting a treatment as authorized for you). RAGnosis provides population- "
+    "and region-level public health information and biomedical evidence; it does "
+    "not assess an individual's infection status, predict personal infection, or "
+    "authorize treatment. If you have symptoms or a personal health concern, "
+    "please consult a qualified clinician. Any retrieved public-health findings "
+    "and literature remain available in the structured fields of this response."
+)
+
 
 class SafetyAction(str, Enum):
     """What the enforcement layer did to the model output."""
@@ -131,6 +143,30 @@ _DEFINITIVE_PATTERNS = (
     r"100%\s+(?:certain|sure|confident)",
     r"there\s+is\s+no\s+doubt\s+(?:that\s+)?(?:this|it|the\s+\w+)\s+is\s+"
     r"(?:cancer|malignan\w+|a\s+tumou?r)",
+)
+
+# §18 — personal medical determination patterns. These assert something about
+# the *individual user's* health status, infection, or treatment authorization,
+# which RAGnosis must never do. Population/regional statements are NOT matched
+# here (e.g. "cases are rising in the region" is allowed); only claims directed
+# at "you"/"your" as a personal determination are flagged.
+_PERSONAL_MEDICAL_PATTERNS = (
+    # "you have/are infected/have caught ..."
+    r"\byou\s+(?:have|are|might have|probably have|likely have|may have)\s+"
+    r"(?:been\s+)?(?:infected|contracted|caught|got|developed)\b",
+    r"\byou\s+(?:are|'re)\s+(?:infected|contagious|sick with|ill with)\b",
+    r"\byou\s+(?:have|'ve got)\s+(?:the\s+)?(?:disease|infection|virus|illness)\b",
+    # predicting the user will get infected
+    r"\byou\s+will\s+(?:get|catch|contract|develop|be infected with)\b",
+    r"\byou\s+are\s+(?:definitely|certainly|likely|going to be)\s+infected\b",
+    # treatment as authorized for the user
+    r"\byou\s+should\s+(?:take|start|use|be prescribed)\s+"
+    r"(?:the\s+)?(?:antibiotics?|antivirals?|medication|drug|treatment|"
+    r"amoxicillin|azithromycin|doxycycline|oseltamivir|tamiflu)\b",
+    r"\bi\s+(?:diagnose|prescribe)\s+you\b",
+    # individualized infection risk stated as fact
+    r"\byour\s+(?:personal\s+)?(?:risk of infection|infection risk)\s+is\s+"
+    r"(?:high|low|elevated|certain|guaranteed)\b",
 )
 
 _PMID_PATTERN = re.compile(r"\bPMID[:\s]*([0-9]{4,9})\b", re.IGNORECASE)
@@ -195,6 +231,24 @@ def detect_overconfident_diagnosis(text: str) -> list[str]:
     return found
 
 
+def detect_personal_medical_claim(text: str) -> list[str]:
+    """Return phrases that make a personal medical determination about the user.
+
+    These are population/individual boundary violations (§18): telling the user
+    they are infected, predicting they will be infected, presenting treatment as
+    authorized for them, or stating an individualized infection risk as fact.
+    Negated statements ("you do not have ...") are excluded.
+    """
+    found: list[str] = []
+    lowered = text.lower()
+    for pattern in _PERSONAL_MEDICAL_PATTERNS:
+        for match in re.finditer(pattern, lowered):
+            if _is_negated(lowered, match.start()):
+                continue
+            found.append(match.group(0).strip())
+    return found
+
+
 def detect_fabricated_citations(text: str, evidence: list[Evidence]) -> list[str]:
     """Return PMIDs cited in ``text`` that are absent from retrieved evidence."""
     known = _known_pmids(evidence)
@@ -252,12 +306,18 @@ def validate_response(
     warnings: list[str] = []
 
     overconfident = detect_overconfident_diagnosis(text)
+    personal = detect_personal_medical_claim(text)
     fabricated = detect_fabricated_citations(text, evidence)
 
     if overconfident:
         warnings.append(
             "Definitive-diagnosis language detected; answer withheld: "
             + "; ".join(sorted(set(overconfident)))
+        )
+    if personal:
+        warnings.append(
+            "Personal medical determination detected; answer withheld: "
+            + "; ".join(sorted(set(personal)))
         )
     if fabricated:
         warnings.append(
@@ -269,6 +329,14 @@ def validate_response(
     if overconfident:
         return ValidationResult(
             text=WITHHELD_DIAGNOSIS_MESSAGE + SAFETY_NOTICE,
+            warnings=warnings,
+            action=SafetyAction.WITHHELD,
+        )
+
+    # Priority 1b: withhold on personal medical determination (§18).
+    if personal:
+        return ValidationResult(
+            text=WITHHELD_PERSONAL_MESSAGE + SAFETY_NOTICE,
             warnings=warnings,
             action=SafetyAction.WITHHELD,
         )

@@ -168,6 +168,40 @@ configured` response. Responses carry a machine-readable `safety_action`
 (`pass` / `redacted` / `withheld`) alongside `warnings`, `observations`, and
 `evidence`.
 
+## Agent & live health intelligence
+
+The same service exposes a composed **agent** at `POST /agent` that adds a **live
+disease & health intelligence** capability. RAGnosis is an evidence grounded
+biomedical research agent that combines graph knowledge, biomedical literature,
+multimodal observations, and **current public health information** while explicitly
+preserving source provenance and uncertainty. It is **not** a diagnostic system.
+
+The agent composes the existing pipeline (it does not replace it): deterministic
+routing decides which tools to run, explicit user-supplied location scopes any
+regional lookup (location is **never** inferred from IP, browser, or account, and
+the agent asks first when a geographic question has no location), and live health
+intelligence fetches **current** information from authoritative surveillance feeds
+(WHO / CDC / ECDC by default; India MoHFW / NCDC / IDSP, PAHO, and Telangana can be
+added via `HEALTH_SOURCE_FEEDS`) at request time — model training knowledge is never
+presented as the current outbreak situation. Findings carry status (using the
+source's own term), transmission, geographic scope, relevance to the requested
+location, official risk if stated (never invented), freshness, alerts, conflicts,
+and full provenance with timestamps. See
+[`docs/AGENT_ARCHITECTURE.md`](docs/AGENT_ARCHITECTURE.md).
+
+```bash
+# text + live health, explicitly scoped to a location
+curl -X POST http://localhost:8001/agent \
+  -F "question=Is there a current cholera outbreak I should know about?" \
+  -F "location=Hyderabad, Telangana, India"
+```
+
+An optional live smoke test (the only network path, never in CI) is available:
+
+```bash
+python scripts/live_health_smoke.py --location "India"
+```
+
 ## Checks
 
 Automated tests cover the multimodal track and run fully offline (no API keys, no

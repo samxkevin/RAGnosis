@@ -4,6 +4,13 @@
 
 The multimodal track extends RAGnosis from text-only biomedical retrieval into an evidence-grounded research workflow that can accept an image together with a question.
 
+> **See also:** [`AGENT_ARCHITECTURE.md`](AGENT_ARCHITECTURE.md) documents the composed agent
+> (`POST /agent`) that adds a **live disease & health intelligence** capability on top of this
+> pipeline — deterministic routing, explicit-only location handling, authoritative surveillance
+> feeds with provenance and freshness, conflict handling, and population-vs-individual safety.
+> Live health intelligence is one more tool for the same agent; it does not replace the pipeline
+> described here.
+
 The design intentionally separates concerns so that no single stage can silently
 turn an uncertain observation into a confident medical claim:
 
@@ -89,6 +96,15 @@ This permits a hosted VLM today and a local/self-hosted adapter later without ch
 | `MULTIMODAL_MAX_UPLOAD_BYTES` | Max upload size | `12582912` |
 | `MULTIMODAL_MAX_IMAGE_PIXELS` | Decompression-bomb cap | `40000000` |
 | `MULTIMODAL_MAX_VISION_DIMENSION` | Longest edge sent to VLM | `2048` |
+| `HEALTH_TIMEOUT` | Live-health per-source HTTP timeout (s) | `15` |
+| `HEALTH_CACHE_TTL` | Live-health cache lifetime (s); `0` disables | `900` |
+| `HEALTH_CURRENT_DAYS` / `HEALTH_RECENT_DAYS` | Freshness thresholds (days) | `14` / `60` |
+| `HEALTH_MAX_ITEMS_PER_SOURCE` | Max items parsed per feed | `40` |
+| `HEALTH_USER_AGENT` | User-Agent sent to health feeds | `RAGnosis-HealthIntelligence/1.0 (...)` |
+| `HEALTH_SOURCE_FEEDS` | Live-health feeds `org|tier|scope|url` | (built-in defaults) |
+
+See [`AGENT_ARCHITECTURE.md`](AGENT_ARCHITECTURE.md) for the full live-health configuration
+reference, source tiers, and the `POST /agent` endpoint.
 
 ## Demo flow (for a judge)
 

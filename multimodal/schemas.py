@@ -7,6 +7,16 @@ from typing import Any, Literal
 Modality = Literal["text", "image", "multimodal"]
 RetrievalStatus = Literal["ok", "empty", "unavailable", "skipped"]
 
+# Evidence provenance kinds for fusion (§14). Every piece of evidence carries its
+# kind so the prompt and UI can keep the sources distinguishable.
+EvidenceKind = Literal[
+    "pubmed_evidence",
+    "neo4j_evidence",
+    "image_observation",
+    "health_surveillance",
+    "health_news",
+]
+
 
 def _clamp_confidence(value: Any) -> float | None:
     """Normalize a model-supplied confidence into ``[0.0, 1.0]`` or ``None``.
@@ -37,6 +47,9 @@ class Evidence:
     uri: str | None = None
     score: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Provenance kind for evidence fusion (§14). Defaults to pubmed_evidence to
+    # preserve the behaviour of existing callers that pre-date the health track.
+    kind: EvidenceKind = "pubmed_evidence"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -98,6 +111,80 @@ class MultimodalResponse:
             "generation_model": self.generation_model,
             "retrieval_status": self.retrieval_status,
             "warnings": list(self.warnings),
+            "image_metadata": dict(self.image_metadata),
+            "safety_action": self.safety_action,
+        }
+
+
+@dataclass(frozen=True)
+class ExecutionTrace:
+    """Non-sensitive record of what the agent did (§17).
+
+    This is explicitly NOT chain-of-thought: it records the route taken, tools
+    invoked, retrieval/live-data status, the location used, when live data was
+    checked, and the safety action — nothing about the model's internal
+    reasoning.
+    """
+
+    route: str
+    tools_used: list[str] = field(default_factory=list)
+    router_reasons: list[str] = field(default_factory=list)
+    retrieval_status: RetrievalStatus = "skipped"
+    live_data_status: str = "skipped"
+    locations: list[dict[str, Any]] = field(default_factory=list)
+    last_checked: str | None = None
+    safety_action: str = "pass"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AgentResponse:
+    """Composed agent answer with provenance, live-health findings and trace.
+
+    This is the output of the full agent flow (vision + literature + live health
+    intelligence + fusion + grounded generation + deterministic safety). It is a
+    superset of :class:`MultimodalResponse` shaped for the agent endpoint/UI.
+    """
+
+    answer: str
+    modality: Modality
+    route: str
+    trace: ExecutionTrace
+    needs_location: bool = False
+    location_prompt: str | None = None
+    observations: list[ImageObservation] = field(default_factory=list)
+    evidence: list[Evidence] = field(default_factory=list)
+    health: dict[str, Any] | None = None  # HealthIntelligenceResult.to_dict()
+    limitations: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    vision_model: str | None = None
+    generation_model: str | None = None
+    retrieval_status: RetrievalStatus = "skipped"
+    live_data_status: str = "skipped"
+    last_checked: str | None = None
+    image_metadata: dict[str, Any] = field(default_factory=dict)
+    safety_action: str = "pass"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "answer": self.answer,
+            "modality": self.modality,
+            "route": self.route,
+            "trace": self.trace.to_dict(),
+            "needs_location": self.needs_location,
+            "location_prompt": self.location_prompt,
+            "observations": [o.to_dict() for o in self.observations],
+            "evidence": [e.to_dict() for e in self.evidence],
+            "health": self.health,
+            "limitations": list(self.limitations),
+            "warnings": list(self.warnings),
+            "vision_model": self.vision_model,
+            "generation_model": self.generation_model,
+            "retrieval_status": self.retrieval_status,
+            "live_data_status": self.live_data_status,
+            "last_checked": self.last_checked,
             "image_metadata": dict(self.image_metadata),
             "safety_action": self.safety_action,
         }

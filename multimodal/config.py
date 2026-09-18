@@ -64,6 +64,21 @@ class MultimodalConfig:
     max_image_pixels: int = 40_000_000  # decompression-bomb guard (~40 MP)
     max_vision_dimension: int = 2048  # longest edge sent to the vision model
 
+    # Live health intelligence (public-health surveillance feeds).
+    health_timeout: float = 15.0
+    health_user_agent: str = "RAGnosis-HealthIntelligence/1.0 (research; contact via repo)"
+    health_cache_ttl: float = 900.0  # seconds; 0 disables caching
+    health_max_items_per_source: int = 40
+    # Freshness thresholds (days). A source newer than "current" is `current`,
+    # newer than "recent" is `recent`, otherwise `stale`. Sources that advertise
+    # their own cadence should override these at the provider level.
+    health_current_days: int = 14
+    health_recent_days: int = 60
+    # Newline/semicolon/comma separated list of "org|type|scope|url" feed specs.
+    # Empty by default so tests and offline use never hit the network implicitly;
+    # populate via HEALTH_SOURCE_FEEDS or rely on DEFAULT_HEALTH_FEEDS in code.
+    health_source_feeds: str = ""
+
     @classmethod
     def from_env(cls) -> "MultimodalConfig":
         return cls(
@@ -87,4 +102,15 @@ class MultimodalConfig:
             ),
             max_image_pixels=_get_int("MULTIMODAL_MAX_IMAGE_PIXELS", 40_000_000),
             max_vision_dimension=_get_int("MULTIMODAL_MAX_VISION_DIMENSION", 2048),
+            health_timeout=_get_float("HEALTH_TIMEOUT", 15.0),
+            health_user_agent=os.getenv(
+                "HEALTH_USER_AGENT",
+                "RAGnosis-HealthIntelligence/1.0 (research; contact via repo)",
+            ),
+            health_cache_ttl=_get_float("HEALTH_CACHE_TTL", 900.0),
+            health_max_items_per_source=_get_int("HEALTH_MAX_ITEMS_PER_SOURCE", 40),
+            health_current_days=_get_int("HEALTH_CURRENT_DAYS", 14),
+            health_recent_days=_get_int("HEALTH_RECENT_DAYS", 60),
+            health_source_feeds=os.getenv("HEALTH_SOURCE_FEEDS", ""),
         )
+
