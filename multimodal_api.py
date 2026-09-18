@@ -5,20 +5,28 @@ import os
 import tempfile
 from pathlib import Path
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 
 from multimodal.config import MultimodalConfig
+from multimodal.errors import NotConfiguredError
 from multimodal.image import ImageValidationError, SUPPORTED_IMAGE_TYPES
 from multimodal.schemas import MultimodalRequest
 from multimodal.service import MultimodalRAGService
 
 logger = logging.getLogger("ragnosis.multimodal_api")
 
+ROOT_DIR = Path(__file__).resolve().parent
 CONFIG = MultimodalConfig.from_env()
 app = Flask(__name__)
 # Reject oversized uploads at the WSGI layer before buffering the whole body.
 app.config["MAX_CONTENT_LENGTH"] = CONFIG.max_upload_bytes
 service = MultimodalRAGService(CONFIG)
+
+
+@app.get("/")
+def index():
+    """Serve a self-contained demo UI so a judge can use the API in a browser."""
+    return send_from_directory(ROOT_DIR / "multimodal", "demo.html")
 
 
 @app.get("/health")
@@ -68,9 +76,18 @@ def analyze():
     except ImageValidationError as exc:
         # Client-side problem with the uploaded image -> 400, not 502.
         return jsonify({"error": str(exc)}), 400
-    except Exception as exc:  # noqa: BLE001 - upstream/provider failure
+    except NotConfiguredError as exc:
+        # Missing provider configuration is a deployment/operator issue; the
+        # message is safe (it names an env var, not a secret) and actionable.
+        logger.error("multimodal analysis unavailable: %s", exc)
+        return jsonify({"error": str(exc)}), 503
+    except Exception:  # noqa: BLE001 - upstream/provider failure
+        # Log full detail server-side; return a generic message so provider
+        # internals / stack details are never leaked to the client.
         logger.exception("multimodal analysis failed")
-        return jsonify({"error": str(exc)}), 502
+        return jsonify(
+            {"error": "Upstream analysis failed. Please retry later."}
+        ), 502
     finally:
         if temp_path:
             try:

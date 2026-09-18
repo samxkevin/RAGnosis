@@ -75,6 +75,22 @@ def test_encode_for_vision_converts_bmp_to_png(tmp_path: Path):
     assert data_url.startswith("data:image/png;base64,")
 
 
+def test_encode_for_vision_mime_follows_content_not_extension(tmp_path: Path):
+    # A .png file that actually contains JPEG bytes must be transported with the
+    # correct MIME (image/jpeg), never image/png based on the extension.
+    path = tmp_path / "mislabeled.png"
+    Image.new("RGB", (16, 16), "red").save(path, format="JPEG")
+    data_url = encode_for_vision(path)
+    assert data_url.startswith("data:image/jpeg;base64,")
+
+
+def test_encode_for_vision_converts_palette_mode(tmp_path: Path):
+    path = tmp_path / "palette.png"
+    Image.new("P", (16, 16)).save(path)
+    data_url = encode_for_vision(path)
+    assert data_url.startswith("data:image/png;base64,")
+
+
 def test_encode_for_vision_downscales_large_image(tmp_path: Path):
     path = _make_image(tmp_path / "wide.png", size=(4000, 100))
     data_url = encode_for_vision(path, max_dimension=512)

@@ -5,6 +5,7 @@ import logging
 from typing import Any, Protocol
 
 from .config import MultimodalConfig
+from .errors import NotConfiguredError
 from .image import inspect_image
 from .retrieval import BiomedicalRetriever
 from .safety import build_system_instruction, validate_response
@@ -52,7 +53,7 @@ class CohereGenerator:
 
     def _get_client(self):
         if not self.configured():
-            raise RuntimeError(
+            raise NotConfiguredError(
                 "COHERE_API_KEY is not configured for multimodal RAG generation."
             )
         if self._client is None:
@@ -138,9 +139,16 @@ class MultimodalRAGService:
             raise RuntimeError("The generation provider returned an empty response.")
 
         # Deterministic post-generation guard: verify the model did not overstep
-        # the safety contract or cite evidence it was never given.
+        # the safety contract or cite evidence it was never given. When it did,
+        # the unsafe answer is withheld/redacted here rather than returned.
         validation = validate_response(answer, evidence, observations)
         warnings.extend(validation.warnings)
+        if validation.enforced:
+            logger.warning(
+                "Safety enforcement applied (%s): %s",
+                validation.action.value,
+                "; ".join(validation.warnings),
+            )
 
         return MultimodalResponse(
             answer=validation.text,
@@ -153,6 +161,7 @@ class MultimodalRAGService:
             retrieval_status=retrieval_status,
             warnings=warnings,
             image_metadata=image_metadata,
+            safety_action=validation.action.value,
         )
 
     def _retrieve(

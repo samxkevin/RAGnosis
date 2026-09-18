@@ -1,6 +1,8 @@
 .env
 *.env
-config.py
+# Legacy root-level secrets file only; do NOT ignore package modules like
+# multimodal/config.py (a leading slash anchors this to the repo root).
+/config.py
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/

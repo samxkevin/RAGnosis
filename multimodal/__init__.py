@@ -2,6 +2,7 @@
 
 __all__ = [
     "config",
+    "errors",
     "schemas",
     "image",
     "vision",

@@ -109,11 +109,11 @@ def test_analyze_image_validation_error_is_400(client, monkeypatch):
     assert resp.status_code == 400
 
 
-def test_analyze_upstream_error_is_502(client, monkeypatch):
+def test_analyze_upstream_error_is_502_and_does_not_leak(client, monkeypatch):
     c, stub = client
 
     def boom(_request):
-        raise RuntimeError("provider exploded")
+        raise RuntimeError("provider exploded with secret internal detail")
 
     monkeypatch.setattr(stub, "run", boom)
     resp = c.post(
@@ -122,3 +122,37 @@ def test_analyze_upstream_error_is_502(client, monkeypatch):
         content_type="multipart/form-data",
     )
     assert resp.status_code == 502
+    # Internal exception text must not be leaked to the client.
+    assert "secret internal detail" not in resp.get_json()["error"]
+
+
+def test_analyze_oversized_upload_is_413(client, monkeypatch):
+    c, _ = client
+    # Shrink the limit for the test so we don't have to send megabytes.
+    monkeypatch.setitem(multimodal_api.app.config, "MAX_CONTENT_LENGTH", 128)
+    big = io.BytesIO(b"x" * 5000)
+    resp = c.post(
+        "/analyze",
+        data={"question": "q", "image": (big, "x.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 413
+    assert "limit" in resp.get_json()["error"].lower()
+
+
+def test_analyze_not_configured_is_503(client, monkeypatch):
+    c, stub = client
+    from multimodal.errors import NotConfiguredError
+
+    def boom(_request):
+        raise NotConfiguredError("COHERE_API_KEY is not configured")
+
+    monkeypatch.setattr(stub, "run", boom)
+    resp = c.post(
+        "/analyze",
+        data={"question": "q", "image": (_png_bytes(), "x.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 503
+    # Config errors name the missing variable (safe, actionable) but no secret.
+    assert "COHERE_API_KEY" in resp.get_json()["error"]

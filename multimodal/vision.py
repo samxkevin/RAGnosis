@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterable
 import requests
 
 from .config import MultimodalConfig
+from .errors import NotConfiguredError
 from .image import encode_for_vision, inspect_image
 from .safety import IMAGE_RULES, build_system_instruction
 from .schemas import ImageObservation
@@ -134,7 +135,9 @@ Technical image metadata: {json.dumps(metadata, sort_keys=True)}
         # Validate first so an unreadable/oversized image fails before any spend.
         metadata = inspect_image(path, max_pixels=self.config.max_image_pixels)
         if not self.configured():
-            raise RuntimeError("OPENAI_API_KEY is not configured for multimodal analysis.")
+            raise NotConfiguredError(
+                "OPENAI_API_KEY is not configured for multimodal analysis."
+            )
 
         data_url = encode_for_vision(
             path,

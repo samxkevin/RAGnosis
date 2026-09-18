@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from enum import Enum
 
 from .schemas import Evidence, ImageObservation
 
@@ -53,49 +54,110 @@ OUTPUT DISCIPLINE:
 
 
 # ---------------------------------------------------------------------------
-# Deterministic output validation
+# Deterministic output validation and ENFORCEMENT
 # ---------------------------------------------------------------------------
-# The prompt above *asks* the model to behave. These checks *verify* the output
-# after generation, independent of the model, so an overconfident or fabricated
-# claim is caught by code rather than trusted blindly.
+# The prompt above *asks* the model to behave. The checks below *verify* the
+# output after generation, independent of the model. Crucially, when a check
+# fails the pipeline does not present the model's substantive claim as an
+# authoritative answer: diagnostic overreach is withheld and fabricated
+# citations are removed, so unsafe text is never returned verbatim as the answer.
+#
+# This is a conservative heuristic layer, not a proof of medical safety. It
+# reduces, but cannot mathematically guarantee the absence of, overconfident or
+# fabricated output.
 
 SAFETY_NOTICE = (
-    "\n\n---\nSafety note: The statements above are informational and derived from "
-    "model observations and retrieved literature. They are not a diagnosis. "
-    "Please consult a qualified clinician for any personal medical decision."
+    "\n\n---\nSafety note: This response is informational and derived from model "
+    "observations and retrieved literature. It is not a diagnosis. Please consult "
+    "a qualified clinician for any personal medical decision."
 )
 
-# Patterns that assert a *confirmed* diagnosis from an image. We look for
-# definitive framing ("this is cancer", "confirms malignancy", "diagnosed with")
-# rather than merely mentioning a condition, which is legitimate.
+# Response substituted when diagnostic overreach is detected. The unsafe answer
+# is withheld; observations and evidence remain available in the structured
+# response so nothing is silently lost.
+WITHHELD_DIAGNOSIS_MESSAGE = (
+    "The generated answer was withheld because it asserted a definitive medical "
+    "diagnosis, which RAGnosis does not provide. RAGnosis is an informational "
+    "research assistant, not a diagnostic system. The image observations and any "
+    "retrieved literature are available in the structured fields of this response; "
+    "please review them with a qualified clinician, who can interpret them in the "
+    "full clinical context."
+)
+
+
+class SafetyAction(str, Enum):
+    """What the enforcement layer did to the model output."""
+
+    PASS = "pass"  # safe output returned unchanged
+    REDACTED = "redacted"  # fabricated citations stripped, rest preserved
+    WITHHELD = "withheld"  # diagnostic overreach; substantive answer replaced
+
+
+# Negation cues that, when they appear shortly before a matched phrase, indicate
+# the sentence is *denying* a definitive claim ("cannot confirm cancer") rather
+# than asserting one. Used to suppress false positives.
+_NEGATION_CUES = (
+    "not",
+    "no",
+    "cannot",
+    "can't",
+    "cant",
+    "unable",
+    "without",
+    "never",
+    "isn't",
+    "aren't",
+    "does not",
+    "doesn't",
+    "rule out",
+    "ruling out",
+    "unlikely",
+)
+
+# Phrases that assert a *confirmed* diagnosis. Kept deliberately narrow: they
+# require definitive framing ("this scan shows cancer", "you have a tumor",
+# "confirms malignancy"), not mere mention of a condition. "diagnosis of X" is
+# intentionally NOT matched here because it appears in legitimate differential
+# discussion; only "diagnosed with X" (a statement about the patient) is.
 _DEFINITIVE_PATTERNS = (
-    r"\b(this|the)\s+(image|scan|x-?ray|mri|ct|ultrasound)\s+(shows|confirms|proves|demonstrates)\s+"
-    r"(a\s+)?(malignan\w+|cancer|tumou?r|carcinoma|metastas\w+|fracture|infection)\b",
-    r"\bconfirm(s|ed)?\s+(a\s+)?(diagnosis|malignan\w+|cancer|tumou?r|carcinoma)\b",
-    r"\b(you|the patient)\s+(have|has|are|is)\s+(definitely\s+|certainly\s+)?"
-    r"(cancer|a\s+tumou?r|a\s+malignan\w+|carcinoma)\b",
-    r"\b(is|are)\s+(definitely|certainly|clearly)\s+(malignant|cancerous|benign)\b",
-    r"\bdiagnos(ed|is)\s+(with|of|as)\s+\w+",
-    r"\b100%\s+(certain|sure|confident)\b",
-    r"\bthere\s+is\s+no\s+(doubt|need)\s+(that|to)\b.*\b(cancer|malignan\w+|tumou?r)\b",
+    r"(?:this|the)\s+(?:image|scan|x-?ray|mri|ct|ultrasound|radiograph)\s+"
+    r"(?:shows?|confirms?|proves?|demonstrates?|reveals?)\s+"
+    r"(?:a\s+|an\s+)?(?:malignan\w+|cancer|tumou?rs?|carcinoma|metastas\w+|fractures?|infections?)",
+    r"confirm(?:s|ed)?\s+(?:a\s+|the\s+)?(?:diagnosis|malignan\w+|cancer|tumou?r|carcinoma)",
+    r"(?:you|the patient)\s+(?:have|has|are|is)\s+(?:definitely\s+|certainly\s+|clearly\s+)?"
+    r"(?:cancer|a\s+tumou?r|a\s+malignan\w+|carcinoma|metastatic\s+\w+)",
+    r"(?:is|are)\s+(?:definitely|certainly|clearly)\s+(?:malignant|cancerous|benign)",
+    r"diagnos(?:ed)\s+(?:with|as)\s+\w+",
+    r"100%\s+(?:certain|sure|confident)",
+    r"there\s+is\s+no\s+doubt\s+(?:that\s+)?(?:this|it|the\s+\w+)\s+is\s+"
+    r"(?:cancer|malignan\w+|a\s+tumou?r)",
 )
 
 _PMID_PATTERN = re.compile(r"\bPMID[:\s]*([0-9]{4,9})\b", re.IGNORECASE)
 _PUBMED_URL_PATTERN = re.compile(
     r"pubmed\.ncbi\.nlm\.nih\.gov/([0-9]{4,9})", re.IGNORECASE
 )
+# Preceding window (characters) scanned for a negation cue before a match.
+_NEGATION_WINDOW = 45
 
 
 @dataclass
 class ValidationResult:
-    """Outcome of deterministic post-generation validation."""
+    """Outcome of deterministic post-generation validation and enforcement."""
 
     text: str
     warnings: list[str] = field(default_factory=list)
+    action: SafetyAction = SafetyAction.PASS
 
     @property
     def ok(self) -> bool:
+        """True when no safety warnings were raised."""
         return not self.warnings
+
+    @property
+    def enforced(self) -> bool:
+        """True when the output was altered (redacted or withheld)."""
+        return self.action is not SafetyAction.PASS
 
 
 def _known_pmids(evidence: list[Evidence]) -> set[str]:
@@ -110,13 +172,25 @@ def _known_pmids(evidence: list[Evidence]) -> set[str]:
     return pmids
 
 
+def _is_negated(text_lower: str, start: int) -> bool:
+    """Return True if a negation cue appears in the window preceding ``start``."""
+    window = text_lower[max(0, start - _NEGATION_WINDOW):start]
+    return any(cue in window for cue in _NEGATION_CUES)
+
+
 def detect_overconfident_diagnosis(text: str) -> list[str]:
-    """Return the definitive-diagnosis phrases found in ``text`` (may be empty)."""
+    """Return definitive-diagnosis phrases found in ``text`` (may be empty).
+
+    Negated statements (e.g. "cannot confirm cancer", "this does not show a
+    tumor") are excluded so conservative, correctly-hedged language is not
+    flagged.
+    """
     found: list[str] = []
     lowered = text.lower()
     for pattern in _DEFINITIVE_PATTERNS:
-        match = re.search(pattern, lowered)
-        if match:
+        for match in re.finditer(pattern, lowered):
+            if _is_negated(lowered, match.start()):
+                continue
             found.append(match.group(0).strip())
     return found
 
@@ -129,37 +203,87 @@ def detect_fabricated_citations(text: str, evidence: list[Evidence]) -> list[str
     return sorted(cited - known)
 
 
+def _redact_fabricated_citations(text: str, fabricated: set[str]) -> str:
+    """Remove sentences/fragments that cite a fabricated PMID.
+
+    We neutralize the specific fabricated identifiers rather than deleting whole
+    paragraphs, replacing them with an explicit marker so the reader can see a
+    citation was removed instead of silently trusting a real-looking one.
+    """
+    if not fabricated:
+        return text
+
+    def _pmid_sub(match: re.Match) -> str:
+        pmid = match.group(1)
+        return "[unverified citation removed]" if pmid in fabricated else match.group(0)
+
+    def _url_sub(match: re.Match) -> str:
+        pmid = match.group(1)
+        return "[unverified citation removed]" if pmid in fabricated else match.group(0)
+
+    text = _PMID_PATTERN.sub(_pmid_sub, text)
+    text = _PUBMED_URL_PATTERN.sub(_url_sub, text)
+    return text
+
+
 def validate_response(
     text: str,
     evidence: list[Evidence] | None = None,
     observations: list[ImageObservation] | None = None,
 ) -> ValidationResult:
-    """Deterministically check a generated answer against the safety contract.
+    """Deterministically validate AND enforce the safety contract on an answer.
 
-    This never edits the model's substantive claims. It (a) records warnings for
-    definitive-diagnosis language and citations not present in the retrieved
-    evidence, and (b) appends a standing safety notice when the answer makes
-    medical statements without one. The model can never suppress these checks.
+    Enforcement policy (in priority order):
+
+    1. **Diagnostic overreach → WITHHELD.** If the answer asserts a definitive
+       diagnosis, the substantive answer is not returned. It is replaced with a
+       conservative message; the structured observations/evidence remain intact.
+    2. **Fabricated citations → REDACTED.** PMIDs not present in the retrieved
+       evidence are removed from the text and replaced with an explicit marker.
+    3. **Otherwise → PASS.** Safe output is returned unchanged, with a standing
+       safety notice appended if the answer lacks one.
+
+    Warnings are always machine-readable and recorded regardless of action, so a
+    caller can see *why* enforcement occurred. The safety notice never claims the
+    output is thereby "safe"; it states the informational, non-diagnostic
+    boundary.
     """
     evidence = evidence or []
     warnings: list[str] = []
 
     overconfident = detect_overconfident_diagnosis(text)
+    fabricated = detect_fabricated_citations(text, evidence)
+
     if overconfident:
         warnings.append(
-            "Potential definitive-diagnosis language detected: "
+            "Definitive-diagnosis language detected; answer withheld: "
             + "; ".join(sorted(set(overconfident)))
         )
-
-    fabricated = detect_fabricated_citations(text, evidence)
     if fabricated:
         warnings.append(
-            "Citations not present in retrieved evidence (possible fabrication): PMID "
+            "Citations not present in retrieved evidence (removed): PMID "
             + ", PMID ".join(fabricated)
         )
 
+    # Priority 1: withhold on diagnostic overreach.
+    if overconfident:
+        return ValidationResult(
+            text=WITHHELD_DIAGNOSIS_MESSAGE + SAFETY_NOTICE,
+            warnings=warnings,
+            action=SafetyAction.WITHHELD,
+        )
+
+    # Priority 2: redact fabricated citations, preserve the rest.
+    if fabricated:
+        cleaned = _redact_fabricated_citations(text, set(fabricated))
+        if "safety note:" not in cleaned.lower():
+            cleaned = cleaned.rstrip() + SAFETY_NOTICE
+        return ValidationResult(
+            text=cleaned, warnings=warnings, action=SafetyAction.REDACTED
+        )
+
+    # Priority 3: pass through, ensuring a safety notice is present.
     result_text = text
     if "safety note:" not in text.lower():
         result_text = text.rstrip() + SAFETY_NOTICE
-
-    return ValidationResult(text=result_text, warnings=warnings)
+    return ValidationResult(text=result_text, warnings=warnings, action=SafetyAction.PASS)

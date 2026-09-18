@@ -12,12 +12,13 @@ from PIL import Image, UnidentifiedImageError
 # the vision provider and are converted to PNG by ``encode_for_vision``.
 SUPPORTED_IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
-# Formats the vision transport can carry as a data URL without conversion.
+# PIL formats the vision transport can carry as a data URL without re-encoding,
+# keyed by the *actual decoded format* (not the file extension) so a mislabeled
+# file can never produce a data URL whose MIME disagrees with its bytes.
 _DIRECT_TRANSPORT_MIME = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".webp": "image/webp",
+    "JPEG": "image/jpeg",
+    "PNG": "image/png",
+    "WEBP": "image/webp",
 }
 
 _DEFAULT_MAX_PIXELS = 40_000_000
@@ -98,7 +99,10 @@ def encode_for_vision(
             image.load()
             width, height = image.width, image.height
             needs_resize = max_dimension and max(width, height) > max_dimension
-            direct_mime = _DIRECT_TRANSPORT_MIME.get(suffix)
+            # Base the MIME on the true decoded format, not the file extension,
+            # so a mislabeled file (e.g. JPEG bytes named .png) is never sent
+            # with a data URL whose MIME contradicts its bytes.
+            direct_mime = _DIRECT_TRANSPORT_MIME.get((image.format or "").upper())
 
             if direct_mime and not needs_resize:
                 encoded = base64.b64encode(data).decode("ascii")

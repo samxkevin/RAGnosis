@@ -85,6 +85,7 @@ class MultimodalResponse:
     retrieval_status: RetrievalStatus = "skipped"
     warnings: list[str] = field(default_factory=list)
     image_metadata: dict[str, Any] = field(default_factory=dict)
+    safety_action: str = "pass"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -98,4 +99,5 @@ class MultimodalResponse:
             "retrieval_status": self.retrieval_status,
             "warnings": list(self.warnings),
             "image_metadata": dict(self.image_metadata),
+            "safety_action": self.safety_action,
         }

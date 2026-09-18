@@ -142,14 +142,31 @@ It holds Colab RAG notebooks, graph enrichment and reconstruction exports, and m
 The `multimodal/` package extends RAGnosis with an evidence-grounded image + question
 workflow: image validation and fingerprinting, a provider-agnostic vision model,
 PubMed evidence retrieval, Cohere grounded generation, and a deterministic safety
-validator that flags overconfident diagnoses and fabricated citations. It runs as a
-separate API (`multimodal_api.py`, default port `8001`) and is documented in
-[`docs/MULTIMODAL_ARCHITECTURE.md`](docs/MULTIMODAL_ARCHITECTURE.md).
+layer that **enforces** the informational boundary — it withholds answers containing
+definitive-diagnosis language and redacts citations not present in the retrieved
+evidence (a conservative heuristic layer, not a guarantee of medical safety). It runs
+as a separate API (`multimodal_api.py`, default port `8001`) with a built-in browser
+demo, and is documented in [`docs/MULTIMODAL_ARCHITECTURE.md`](docs/MULTIMODAL_ARCHITECTURE.md).
 
 ```bash
+# 1. configure providers (see docs for all variables)
+export OPENAI_API_KEY=...   # vision
+export COHERE_API_KEY=...    # generation
+# 2. start the API
 python multimodal_api.py
+# 3a. open the built-in demo UI in a browser
+open http://localhost:8001/
+# 3b. or check health / call it directly
 curl http://localhost:8001/health
+curl -X POST http://localhost:8001/analyze \
+  -F "question=Describe the observable features a clinician should review" \
+  -F "image=@sample.png"
 ```
+
+Without provider keys the API still starts; `/analyze` returns a clear `503 not
+configured` response. Responses carry a machine-readable `safety_action`
+(`pass` / `redacted` / `withheld`) alongside `warnings`, `observations`, and
+`evidence`.
 
 ## Checks
 

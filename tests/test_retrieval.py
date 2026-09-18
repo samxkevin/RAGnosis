@@ -140,6 +140,38 @@ def test_search_raises_when_requested():
     raise AssertionError("expected RetrievalError")
 
 
+class _BadJsonResponse:
+    text = "<html>not json</html>"
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+
+def test_search_degrades_on_malformed_json():
+    class _S:
+        def get(self, url, params=None, timeout=None):
+            return _BadJsonResponse()
+
+    retriever = BiomedicalRetriever(MultimodalConfig(), session=_S())
+    # A non-JSON esearch body raises ValueError, which must degrade to [].
+    assert retriever.search("lung", []) == []
+
+
+def test_search_http_error_degrades():
+    class _S:
+        def get(self, url, params=None, timeout=None):
+            resp = _FakeResponse(
+                raise_exc=requests.HTTPError("429 Too Many Requests")
+            )
+            return resp
+
+    retriever = BiomedicalRetriever(MultimodalConfig(), session=_S())
+    assert retriever.search("lung", []) == []
+
+
 def test_common_params_include_etiquette():
     config = MultimodalConfig(pubmed_email="me@example.com", pubmed_api_key="abc")
     session = _FakeSession(esearch_ids=["1"], efetch_xml=SAMPLE_XML)

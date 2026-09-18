@@ -113,21 +113,38 @@ def test_retrieval_empty_status():
     assert result.retrieval_status == "empty"
 
 
-def test_overconfident_generation_is_flagged():
+def test_overconfident_generation_is_withheld_not_returned():
     gen = FakeGenerator(text="This scan confirms cancer.")
     service = _service(generator=gen)
     result = service.run(MultimodalRequest(question="is this cancer?"))
-    assert any("definitive-diagnosis" in w for w in result.warnings)
+    # The unsafe answer must be enforced (withheld), not merely flagged.
+    assert result.safety_action == "withheld"
+    assert "confirms cancer" not in result.answer.lower()
+    assert any("withheld" in w.lower() for w in result.warnings)
 
 
-def test_fabricated_citation_is_flagged():
-    gen = FakeGenerator(text="See PMID 99999999 for confirmation.")
+def test_fabricated_citation_is_removed_from_answer():
+    gen = FakeGenerator(
+        text="This area may warrant review. See PMID 99999999 for details."
+    )
     retriever = FakeRetriever(
         evidence=[Evidence("PubMed", "t", "e", metadata={"pmid": "11111111"})]
     )
     service = _service(retriever=retriever, generator=gen)
     result = service.run(MultimodalRequest(question="q"))
-    assert any("fabrication" in w.lower() for w in result.warnings)
+    assert result.safety_action == "redacted"
+    assert "99999999" not in result.answer
+    assert any("removed" in w.lower() for w in result.warnings)
+
+
+def test_safe_generation_passes_through():
+    gen = FakeGenerator(
+        text="The findings are nonspecific and should be reviewed by a clinician."
+    )
+    service = _service(generator=gen)
+    result = service.run(MultimodalRequest(question="q"))
+    assert result.safety_action == "pass"
+    assert "nonspecific" in result.answer
 
 
 def test_empty_generation_raises():
