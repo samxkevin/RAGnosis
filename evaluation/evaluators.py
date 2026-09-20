@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Any
 
 from multimodal.config import MultimodalConfig
@@ -29,10 +28,11 @@ from multimodal.health_semantics import (
 )
 from multimodal.location import parse_locations
 from multimodal.routing import classify
-from multimodal.safety import SafetyAction, validate_response
+from multimodal.safety import validate_response
 from multimodal.schemas import Evidence
 
 from .cases import EvalCase
+from .outcome import Outcome
 
 # A fixed clock so freshness cases are deterministic.
 EVAL_NOW = datetime(2026, 9, 20, tzinfo=timezone.utc)
@@ -40,13 +40,6 @@ EVAL_NOW = datetime(2026, 9, 20, tzinfo=timezone.utc)
 
 def _clock() -> datetime:
     return EVAL_NOW
-
-
-class Outcome(str, Enum):
-    PASS = "pass"
-    FAIL = "fail"
-    NOT_APPLICABLE = "not_applicable"
-    UNVERIFIED = "unverified"
 
 
 @dataclass(frozen=True)

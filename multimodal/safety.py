@@ -156,9 +156,16 @@ _PERSONAL_MEDICAL_PATTERNS = (
     r"(?:been\s+)?(?:infected|contracted|caught|got|developed)\b",
     r"\byou\s+(?:are|'re)\s+(?:infected|contagious|sick with|ill with)\b",
     r"\byou\s+(?:have|'ve got)\s+(?:the\s+)?(?:disease|infection|virus|illness)\b",
-    # predicting the user will get infected
-    r"\byou\s+will\s+(?:get|catch|contract|develop|be infected with)\b",
+    # predicting the user will get infected. An optional adverb
+    # (probably/likely/definitely/certainly/soon) may sit between "will" and the
+    # verb, and "become infected" is included alongside get/catch/contract.
+    r"\byou\s+will\s+(?:probably\s+|likely\s+|definitely\s+|certainly\s+|soon\s+|"
+    r"most likely\s+)?(?:get|catch|contract|develop|become|be)\s+"
+    r"(?:infected|ill|sick|the\s+\w+)\b",
+    r"\byou\s+will\s+(?:probably\s+|likely\s+)?be infected with\b",
     r"\byou\s+are\s+(?:definitely|certainly|likely|going to be)\s+infected\b",
+    r"\byou\s+(?:are|'re)\s+(?:probably|likely|going to be)\s+"
+    r"(?:going to\s+)?(?:get|catch|become)\s+(?:infected|ill|sick)\b",
     # treatment as authorized for the user
     r"\byou\s+should\s+(?:take|start|use|be prescribed)\s+"
     r"(?:the\s+)?(?:antibiotics?|antivirals?|medication|drug|treatment|"

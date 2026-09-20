@@ -87,7 +87,13 @@ class AgentService:
         locations_present = bool((location_text or "").strip())
 
         route = classify(request.question, has_image, locations_present)
-        loc_res = resolve_location(location_text, route.geographic_intent)
+        # A location is only REQUIRED when the live health lookup will actually
+        # run: that is the only capability whose result must be geographically
+        # scoped. A pure vision/literature question must not be blocked on a
+        # location just because the text contained an incidental geo cue such as
+        # "features in this image".
+        needs_geo_scope = route.geographic_intent and route.uses("health_intelligence")
+        loc_res = resolve_location(location_text, needs_geo_scope)
 
         # §1: geographic question with no explicit location -> ASK, do not guess.
         if loc_res.needs_location:

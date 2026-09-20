@@ -277,6 +277,51 @@ python evaluation/run_evaluation.py
 It needs no API keys and makes no network calls. The benchmark is also asserted
 by `tests/test_evaluation.py` so a regression fails the normal offline suite.
 
+The `evaluation/cases.py` benchmark is a **component** benchmark: it exercises
+the routing, semantic, source-quality, safety and citation building blocks in
+isolation. Its pass rate is a contract check on those components — it is **not**
+a measure of LLM factual accuracy.
+
+### End-to-end agent benchmark
+
+A second, complementary benchmark exercises the **whole composed agent** rather
+than individual helpers. It drives the real `AgentService.run()` once per case
+through injected deterministic fakes (vision, PubMed retrieval, health feeds and
+a scripted text generator) and then applies a fixed battery of *dimension*
+evaluators to the resulting `AgentResponse`:
+
+* `evaluation/agent_harness.py` — builds a fully-injected `AgentService`; the
+  scripted generator lets a case supply a deliberately faithful *or* unfaithful
+  answer so grounding/safety can be checked deterministically and offline. An
+  opt-in live mode swaps in the real generator only.
+* `evaluation/agent_cases.py` — realistic end-to-end cases: static biomedical,
+  current regional, image, combined multimodal, multi-location, unavailable /
+  no-relevant / partial live data, conflicting evidence, personal-medical and
+  unsafe-output red-team, geographic honesty, and current-data freshness.
+* `evaluation/agent_evaluators.py` — eleven dimension evaluators (tool
+  selection, location handling, live-data state, answer grounding, citation
+  grounding, provenance completeness, uncertainty preservation, safety, conflict
+  handling, execution-trace correctness, geographic honesty), each returning
+  `PASS` / `FAIL` / `NOT_APPLICABLE` / `UNVERIFIED`. Grounding is measured as
+  **fidelity to the supplied fixtures**, never general truth, and includes
+  detector self-tests where a deliberately ungrounded answer *must* be flagged.
+* `evaluation/agent_runner.py` + `evaluation/run_agent_evaluation.py` — run all
+  cases and print an **end-to-end contract pass rate** per dimension.
+
+```bash
+python evaluation/run_agent_evaluation.py            # offline, default (CI)
+python evaluation/run_agent_evaluation.py --live     # optional real LLM, never CI
+```
+
+The offline mode needs no API keys and makes no network calls, and is asserted
+by `tests/test_agent_evaluation.py`. `--live` keeps every input deterministic
+but uses the real generator to probe whether an actual model stays faithful to
+the supplied evidence; it requires credentials, skips the scripted-only
+self-tests, and never runs in CI. The reported figure is an end-to-end
+**contract** pass rate over deterministic fixtures — it is **not** a claim about
+LLM factual accuracy, real-time surveillance coverage, or diagnostic validity.
+The health capability here is query-aware **feed retrieval**, not web search.
+
 ## API
 
 The composed agent is served at `POST /agent` (the original `/analyze` endpoint is
