@@ -228,11 +228,53 @@ limitations.
 `tier` ∈ `primary_official` / `regional_official` / `secondary`;
 `scope` ∈ `global` / `national` / `regional` / `local` / `unknown`.
 
-When `HEALTH_SOURCE_FEEDS` is empty, built-in `DEFAULT_HEALTH_FEEDS` are used
-(WHO Disease Outbreak News, CDC, ECDC). Endpoints are configurable — there are no
-hardcoded endpoint assumptions baked into the logic. To add India-specific
-official sources (MoHFW, NCDC, IDSP/successor, state health departments such as
-Telangana) or PAHO, set their feed URLs via `HEALTH_SOURCE_FEEDS`.
+When `HEALTH_SOURCE_FEEDS` is empty, the built-in providers are used: the **WHO
+Disease Outbreak News JSON provider** (`WHODiseaseOutbreakNewsProvider`, which
+calls the OData JSON API — WHO DON has **no** RSS feed) plus the RSS feeds in
+`DEFAULT_HEALTH_FEEDS` (CDC Online Newsroom, ECDC Communicable Disease Threats
+Report, PAHO/WHO Americas). Setting `HEALTH_SOURCE_FEEDS` replaces the RSS feeds;
+the WHO DON JSON provider is always included automatically. Endpoints are
+configurable — no endpoint is hardcoded into the analysis logic.
+
+### Source verification log (Phase 3, verified 2026-09-20)
+
+Endpoints were checked out-of-band (the sandbox blocks general outbound HTTPS
+from Python, so `live_health_smoke.py` cannot reach them from inside CI — a
+Python `SSLError` there means "sandbox egress blocked", not "source down").
+
+| Source | Endpoint | Result |
+| --- | --- | --- |
+| WHO DON (JSON) | `who.int/api/news/diseaseoutbreaknews` | **LIVE**, current 2026 |
+| CDC Newsroom | `tools.cdc.gov/api/v2/resources/media/132608.rss` | **LIVE**, current 2026 |
+| ECDC CDTR | `ecdc.europa.eu/en/taxonomy/term/2942/feed` | **LIVE**, current 2026 |
+| PAHO Americas | `paho.org/en/rss.xml` | **LIVE**, current 2026 |
+| WHO DON RSS | `who.int/feeds/entity/csr/don/en/rss.xml` | **404** (no such feed) |
+| NCDC RSS | `idsp.mohfw.gov.in/.../rss.php` | **404** |
+| India PIB RSS | `pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3` | LIVE but all-ministry / Hindi / non-standard → secondary only |
+
+Real captured samples from the four live sources are stored under
+`tests/fixtures/` so the parsing pipeline is validated against actual source
+structure entirely offline (`tests/test_health_live_fixtures.py`).
+
+### India & Telangana coverage (honest status)
+
+- **Out of the box there is NO India- or Telangana-specific official
+  machine-readable feed.** India findings surface only when a default source
+  (chiefly WHO DON) explicitly names India in an item.
+- Authoritative Indian surveillance (IDSP/IHIP weekly bulletins, NCDC) is
+  published as **PDFs / dashboards without a stable RSS/JSON feed**, and NCDC's
+  historical `rss.php` returns 404 — so none is added as a default (adding an
+  unreachable/invented endpoint is worse than none).
+- The **India PIB** press-release RSS is genuinely live but is all-ministry (not
+  health-scoped) and served in Hindi despite `Lang=1`; it is documented in
+  `.env.example` as an **optional, secondary** source to configure, not a default.
+- **No official Telangana state health feed** could be verified. A Telangana or
+  Hyderabad query therefore reports whatever the configured global/official
+  sources say about that scope and **honestly states the coverage gap** rather
+  than silently narrowing scope or fabricating local data.
+- To add India/Telangana coverage, configure verified official endpoints via
+  `HEALTH_SOURCE_FEEDS`. Do not claim "India coverage" merely because the feed
+  list is configurable.
 
 ## Optional live smoke test
 
@@ -242,11 +284,18 @@ and only when run explicitly. It is **not** part of CI.
 ```bash
 python scripts/live_health_smoke.py --location "Hyderabad, Telangana, India"
 python scripts/live_health_smoke.py --location "India" --location "Brazil"
+python scripts/live_health_smoke.py --location "Telangana, India" \
+    --query "What contagious diseases are currently reported in this region?"
 ```
 
-It prints the retrieval timestamp, sources attempted/succeeded/failed,
-publication/update dates, and the number of findings. If a source is unreachable
-it is reported as failed — nothing is fabricated.
+It runs a **per-source probe** (organization, source URL, HTTP/result status,
+item count, newest publication/update dates) and then the full pipeline
+(retrieval timestamp, sources attempted/succeeded/failed, normalized findings
+with disease name, classification, geo scope, location relevance, transmission,
+risk, alert level, freshness, uncertainty, and provenance). The optional
+`--query` prioritises query-relevant findings deterministically. If a source is
+unreachable it is reported as **failed** and unavailable sources are never turned
+into success — nothing is fabricated.
 
 ## Testing
 

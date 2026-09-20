@@ -45,6 +45,11 @@ from .health_schemas import (
     StatusClassification,
     TransmissionClass,
 )
+from .health_semantics import (
+    analyze_alert,
+    analyze_status,
+    analyze_transmission,
+)
 from .location import Location
 
 logger = logging.getLogger("ragnosis.health")
@@ -74,6 +79,11 @@ class FeedItem:
     stated_transmission: str | None = None
     stated_areas: list[str] = field(default_factory=list)
     stated_risk: str | None = None
+    # Optional explicit disease/condition name a provider extracted from the
+    # source (e.g. a structured field). Used verbatim when the transparent
+    # lexicon does not recognise the disease, instead of reducing the finding to
+    # arbitrary title words. Never LLM-invented.
+    stated_disease: str | None = None
 
 
 class HealthDataProvider(Protocol):
@@ -252,30 +262,46 @@ def parse_feed_specs(raw: str) -> list[FeedSpec]:
     return specs
 
 
-# Default authoritative feeds (§3). These are well-known public RSS endpoints;
-# they are only contacted when a FeedProvider is actually constructed AND used
-# (never at import, never in offline tests). Endpoints are configurable and can
-# be overridden entirely via HEALTH_SOURCE_FEEDS.
+# Default authoritative RSS/Atom feeds (§3). Each endpoint below was verified to
+# return HTTP 200 with current content during Phase-3 hardening (2026-09-20); see
+# docs/AGENT_ARCHITECTURE.md for the verification log. They are only contacted
+# when a provider is actually constructed AND used (never at import, never in
+# offline tests). Endpoints are configurable and can be overridden entirely via
+# HEALTH_SOURCE_FEEDS.
+#
+# NOTE: WHO Disease Outbreak News is NOT an RSS feed (its old RSS URL now 404s).
+# It is served as an OData JSON API and has a dedicated provider,
+# :class:`WHODiseaseOutbreakNewsProvider`, added to the defaults separately.
 DEFAULT_HEALTH_FEEDS: tuple[FeedSpec, ...] = (
     FeedSpec(
-        "WHO Disease Outbreak News",
-        "primary_official",
-        "global",
-        "https://www.who.int/feeds/entity/csr/don/en/rss.xml",
-    ),
-    FeedSpec(
-        "CDC Outbreaks",
+        # Verified 2026-09-20: current outbreak items (Salmonella, E. coli,
+        # Ebola statements, West Nile, etc.). The previously used media id
+        # 403372 returns stale 2019 COVID content and must not be used.
+        "CDC Newsroom",
         "primary_official",
         "national",
-        "https://tools.cdc.gov/api/v2/resources/media/403372.rss",
+        "https://tools.cdc.gov/api/v2/resources/media/132608.rss",
     ),
     FeedSpec(
-        "ECDC Threat Reports",
+        # Verified 2026-09-20: weekly Communicable Disease Threats Report (CDTR).
+        "ECDC Communicable Disease Threats Report",
         "regional_official",
         "regional",
         "https://www.ecdc.europa.eu/en/taxonomy/term/2942/feed",
     ),
+    FeedSpec(
+        # Verified 2026-09-20: PAHO/WHO Americas news, current 2026 items.
+        "PAHO/WHO Americas",
+        "regional_official",
+        "regional",
+        "https://www.paho.org/en/rss.xml",
+    ),
 )
+
+# WHO Disease Outbreak News OData JSON API (verified 2026-09-20). Requires an
+# $orderby to return newest-first; handled by its dedicated provider.
+WHO_DON_API_URL = "https://www.who.int/api/news/diseaseoutbreaknews"
+WHO_DON_ITEM_BASE = "https://www.who.int/emergencies/disease-outbreak-news/item"
 
 
 class FeedProvider:
@@ -332,100 +358,166 @@ class FeedProvider:
         )
 
 
-def build_default_providers(config: MultimodalConfig) -> list[FeedProvider]:
-    """Construct FeedProviders from config feeds, or the built-in defaults.
+def parse_who_don_json(
+    payload: str, retrieved_at: str, max_items: int = 40
+) -> list[FeedItem]:
+    """Parse the WHO Disease Outbreak News OData JSON payload into FeedItems.
+
+    Pure function, no network. WHO DON titles encode the affected country after a
+    dash/en-dash (e.g. "Nipah virus infection - India"); that geography is left
+    for the geo-relevance stage to interpret. Scope is ``global`` because DON is
+    a global register that reports national-level events. Malformed payloads
+    yield an empty list rather than a guess.
+    """
+    import json
+
+    try:
+        data = json.loads(payload)
+    except (ValueError, TypeError):
+        logger.warning("Failed to parse WHO DON JSON payload")
+        return []
+    rows = data.get("value") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        return []
+
+    items: list[FeedItem] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        title = (row.get("Title") or "").strip()
+        if not title:
+            continue
+        summary = (row.get("Summary") or row.get("Overview") or "").strip()
+        pub = _parse_date(row.get("PublicationDate") or row.get("PublicationDateAndTime"))
+        upd = _parse_date(row.get("LastModified")) or pub
+        url_name = (row.get("ItemDefaultUrl") or row.get("UrlName") or "").lstrip("/")
+        uri = f"{WHO_DON_ITEM_BASE}/{url_name}" if url_name else None
+        items.append(
+            FeedItem(
+                organization="WHO Disease Outbreak News",
+                tier="primary_official",
+                title=title,
+                summary=summary[:600],
+                uri=uri,
+                published_at=pub,
+                updated_at=upd,
+                retrieved_at=retrieved_at,
+                geo_scope="global",
+            )
+        )
+        if len(items) >= max_items:
+            break
+    return items
+
+
+class WHODiseaseOutbreakNewsProvider:
+    """Live adapter for WHO Disease Outbreak News (OData JSON API).
+
+    WHO DON has no working RSS feed (the old RSS URL now 404s); this provider
+    queries the official JSON API, requesting newest-first. Network errors
+    propagate to the orchestrator, which records the source as failed without
+    fabricating data (§19).
+    """
+
+    name = "WHO Disease Outbreak News"
+    tier: SourceTier = "primary_official"
+
+    def __init__(
+        self,
+        config: MultimodalConfig,
+        session: Any | None = None,
+        clock: Callable[[], datetime] | None = None,
+        url: str = WHO_DON_API_URL,
+    ) -> None:
+        self.config = config
+        self._session = session
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self.url = url
+
+    def _get_session(self):
+        if self._session is None:
+            import requests
+
+            self._session = requests.Session()
+        return self._session
+
+    def fetch(self, locations: list[Location]) -> list[FeedItem]:
+        retrieved_at = self._clock().astimezone(timezone.utc).isoformat()
+        session = self._get_session()
+        params = {
+            "$orderby": "PublicationDate desc",
+            "$top": str(self.config.health_max_items_per_source),
+            "$select": "Title,Summary,Overview,PublicationDate,LastModified,"
+            "ItemDefaultUrl,UrlName",
+        }
+        resp = session.get(
+            self.url,
+            params=params,
+            timeout=self.config.health_timeout,
+            headers={"User-Agent": self.config.health_user_agent},
+        )
+        resp.raise_for_status()
+        return parse_who_don_json(
+            resp.text, retrieved_at, self.config.health_max_items_per_source
+        )
+
+
+def build_default_providers(config: MultimodalConfig) -> list[HealthDataProvider]:
+    """Construct providers from config feeds, or the built-in defaults.
 
     No network happens here — providers only reach out when ``fetch`` is called.
+    When ``HEALTH_SOURCE_FEEDS`` is set it fully overrides the defaults (and the
+    WHO DON JSON provider is not added, since the operator is choosing sources).
     """
-    specs = parse_feed_specs(config.health_source_feeds) or list(DEFAULT_HEALTH_FEEDS)
-    return [FeedProvider(spec, config) for spec in specs]
+    if config.health_source_feeds and config.health_source_feeds.strip():
+        specs = parse_feed_specs(config.health_source_feeds)
+        return [FeedProvider(spec, config) for spec in specs]
+    providers: list[HealthDataProvider] = [WHODiseaseOutbreakNewsProvider(config)]
+    providers += [FeedProvider(spec, config) for spec in DEFAULT_HEALTH_FEEDS]
+    return providers
 
 
 # ---------------------------------------------------------------------------
-# Analysis vocabulary maps (source-term -> normalized enum)
+# Analysis (context-aware; see multimodal/health_semantics.py)
 # ---------------------------------------------------------------------------
-
-# §6 — map a source's own status wording to a normalized bucket. We only map
-# terms a source explicitly uses; anything else stays "unknown".
-_STATUS_TERMS: tuple[tuple[str, StatusClassification], ...] = (
-    ("pandemic", "pandemic"),
-    ("epidemic", "epidemic"),
-    ("outbreak", "outbreak"),
-    ("endemic", "endemic"),
-    ("cluster", "cluster"),
-    ("sporadic", "sporadic"),
-    ("isolated case", "sporadic"),
-)
-
-# §7 — transmission keywords a source may state. Never inferred from symptoms.
-_TRANSMISSION_TERMS: tuple[tuple[str, TransmissionClass], ...] = (
-    ("person-to-person", "contagious_person_to_person"),
-    ("person to person", "contagious_person_to_person"),
-    ("human-to-human", "contagious_person_to_person"),
-    ("respiratory droplet", "contagious_person_to_person"),
-    ("airborne", "contagious_person_to_person"),
-    ("mosquito", "vector_borne"),
-    ("mosquito-borne", "vector_borne"),
-    ("vector-borne", "vector_borne"),
-    ("vector borne", "vector_borne"),
-    ("tick-borne", "vector_borne"),
-    ("waterborne", "food_or_water_borne"),
-    ("water-borne", "food_or_water_borne"),
-    ("foodborne", "food_or_water_borne"),
-    ("food-borne", "food_or_water_borne"),
-    ("contaminated water", "food_or_water_borne"),
-    ("zoonotic", "zoonotic"),
-    ("animal-to-human", "zoonotic"),
-    ("spillover", "zoonotic"),
-    ("environmental exposure", "environmental"),
-    ("not spread from person to person", "not_person_to_person"),
-    ("does not spread between people", "not_person_to_person"),
-)
-
-# §16 — alert keywords -> alert level. Only from explicit source wording.
-_ALERT_TERMS: tuple[tuple[str, AlertLevel], ...] = (
-    ("public health emergency of international concern", "official_alert"),
-    ("pheic", "official_alert"),
-    ("official alert", "official_alert"),
-    ("emergency declared", "official_alert"),
-    ("health emergency", "official_alert"),
-    ("elevated risk", "elevated"),
-    ("increased risk", "elevated"),
-    ("high alert", "elevated"),
-    ("watch", "watch"),
-    ("advisory", "watch"),
-    ("monitoring", "watch"),
-)
+# Status/transmission/alert classification is delegated to health_semantics,
+# which is negation/tense/modality-aware. The thin wrappers below preserve the
+# original public function names/signatures used across the codebase and tests.
 
 
 def normalize_status(term: str | None, text: str) -> tuple[StatusClassification, str | None]:
-    """Return (normalized_status, source_term) preferring the source's wording."""
-    hay = f"{term or ''} {text}".lower()
-    for needle, status in _STATUS_TERMS:
-        if needle in hay:
-            # Preserve the source's own term where possible.
-            return status, (term.strip() if term and term.strip() else needle)
-    return "unknown", (term.strip() if term and term.strip() else None)
+    """Return (normalized_status, source_term), context-aware (§6).
+
+    Delegates to :mod:`multimodal.health_semantics`, which is negation/tense/
+    modality-aware so "no outbreak", "previous outbreak, now contained", and
+    "possible outbreak" are NOT classified as active outbreaks. The third element
+    of the semantic result (a human-readable reason) is dropped here for
+    backward compatibility; :meth:`HealthIntelligence._analyze_item_for` uses the
+    reason-bearing helpers directly.
+    """
+    status, source_term, _reason = analyze_status(term, text)
+    return status, source_term
 
 
 def normalize_transmission(term: str | None, text: str) -> TransmissionClass:
-    hay = f"{term or ''} {text}".lower()
-    # Check negative statement first so "not spread person to person" wins.
-    for needle, cls in _TRANSMISSION_TERMS:
-        if cls == "not_person_to_person" and needle in hay:
-            return cls
-    for needle, cls in _TRANSMISSION_TERMS:
-        if needle in hay:
-            return cls
-    return "unknown"
+    """Return the transmission class, context-aware (§7).
+
+    Delegates to :mod:`multimodal.health_semantics`. Negated contagion becomes
+    ``not_person_to_person``; hypothetical/elsewhere mentions become ``unknown``
+    rather than a guessed class.
+    """
+    cls, _reason = analyze_transmission(term, text)
+    return cls
 
 
 def classify_alert(text: str, stated_risk: str | None = None) -> tuple[AlertLevel, str | None]:
-    hay = f"{stated_risk or ''} {text}".lower()
-    for needle, level in _ALERT_TERMS:
-        if needle in hay:
-            return level, needle
-    return "none", None
+    """Return (alert_level, reason), context-aware (§16).
+
+    Delegates to :mod:`multimodal.health_semantics`. Negated/past alerts
+    ("no official alert", "alert lifted", "emergency has ended") do not raise the
+    level.
+    """
+    return analyze_alert(text, stated_risk)
 
 
 # ---------------------------------------------------------------------------
@@ -445,16 +537,32 @@ def compute_freshness(
     ``updated_at`` takes precedence over ``published_at``. When no date is known
     the state is ``unknown`` — never guessed as "current".
     """
-    stamp = updated_at or published_at
-    if not stamp:
+    # Prefer the most recent credible timestamp. If updated_at is present but
+    # older than published_at (conflicting timestamps), use the newer of the two
+    # so an "old update of a new item" is not mislabeled stale.
+    candidates = [s for s in (updated_at, published_at) if s]
+    if not candidates:
         return "unknown"
-    try:
-        dt = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-    except ValueError:
+
+    parsed: list[datetime] = []
+    for stamp in candidates:
+        try:
+            dt = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        parsed.append(dt.astimezone(timezone.utc))
+    if not parsed:
         return "unknown"
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    age_days = (now - dt.astimezone(timezone.utc)).total_seconds() / 86400.0
+
+    newest = max(parsed)
+    age_days = (now - newest).total_seconds() / 86400.0
+
+    # A date meaningfully in the future is malformed/untrustworthy: do NOT report
+    # it as "current". Allow a small clock-skew grace window (1 day).
+    if age_days < -1.0:
+        return "unknown"
     if age_days < 0:
         age_days = 0.0
     if age_days <= current_days:
@@ -510,7 +618,7 @@ DISEASE_LEXICON: tuple[str, ...] = (
 
 
 def extract_diseases(text: str) -> list[str]:
-    """Return disease names mentioned in ``text`` (deduped, source order)."""
+    """Return known-lexicon disease names mentioned in ``text`` (deduped)."""
     hay = text.lower()
     found: list[str] = []
     for name in DISEASE_LEXICON:
@@ -519,9 +627,121 @@ def extract_diseases(text: str) -> list[str]:
     return found
 
 
+# Health-event nouns that commonly follow a disease/condition name in an
+# authoritative headline, used to recover an out-of-lexicon disease name from the
+# source's own wording (e.g. "Oropouche virus disease - Cuba", "Marburg virus
+# disease outbreak"). This never invents a name; it only extracts words the
+# source actually wrote.
+_EVENT_NOUNS = (
+    "outbreak",
+    "outbreaks",
+    "epidemic",
+    "cluster",
+    "cases",
+    "infection",
+    "infections",
+    "disease",
+    "virus",
+    "fever",
+    "investigation",
+    "situation",
+    "resurgence",
+    "flare-up",
+)
+
+_STOPWORDS = {
+    "the", "a", "an", "of", "in", "on", "at", "and", "or", "for", "to", "with",
+    "new", "novel", "possible", "suspected", "confirmed", "multi-country",
+    "multicountry", "global", "national", "regional", "local", "update",
+    "situation", "report", "reported", "reports", "amid", "as", "after", "over",
+    "rise", "rising", "surge", "spike", "cases", "case",
+}
+
+_WORD_RE = re.compile(r"[a-z][a-z0-9\-']*")
+
+
+def discover_disease(
+    text: str, stated_disease: str | None = None
+) -> tuple[str | None, bool]:
+    """Best-effort discover the disease a source item is about.
+
+    Returns ``(name, from_lexicon)``. Priority:
+
+    1. A lexicon match (transparent, highest confidence).
+    2. A provider-supplied ``stated_disease`` (used verbatim).
+    3. A conservative extraction of the noun phrase immediately preceding a
+       health-event noun in the source's own title/text (e.g. the words before
+       "outbreak"/"virus disease").
+
+    Returns ``(None, False)`` when nothing can be safely recovered — the caller
+    then decides whether the item still warrants a generic finding. Never
+    fabricates or LLM-invents a disease name.
+    """
+    lex = extract_diseases(text)
+    if lex:
+        return lex[0], True
+    if stated_disease and stated_disease.strip():
+        return stated_disease.strip(), False
+
+    lowered = text.lower()
+
+    # Special case: WHO's "Disease X" placeholder for an unknown pathogen.
+    dx = re.search(r"\bdisease\s+x\b", lowered)
+    if dx:
+        return "disease x", False
+
+    best: str | None = None
+    for noun in _EVENT_NOUNS:
+        for m in re.finditer(rf"\b{re.escape(noun)}\b", lowered):
+            # Take up to three preceding tokens that are not stopwords/nouns.
+            prefix = lowered[: m.start()].strip(" -–—:,.")
+            tokens = _WORD_RE.findall(prefix)
+            phrase: list[str] = []
+            for tok in reversed(tokens):
+                if tok in _STOPWORDS or tok in _EVENT_NOUNS:
+                    if phrase:
+                        break
+                    continue
+                phrase.append(tok)
+                if len(phrase) >= 3:
+                    break
+            if phrase:
+                candidate = " ".join(reversed(phrase))
+                # Keep the "<disease> virus/fever/disease" tail if present so the
+                # name reads naturally (e.g. "oropouche virus").
+                if noun in ("virus", "fever", "disease") and candidate:
+                    candidate = f"{candidate} {noun}"
+                # Reject single-character / too-short noise candidates.
+                if len(candidate.replace(" ", "")) < 3:
+                    continue
+                if best is None or len(candidate) > len(best):
+                    best = candidate
+    if best:
+        return best.strip(), False
+    return None, False
+
+
 # ---------------------------------------------------------------------------
 # Geo relevance (§8)
 # ---------------------------------------------------------------------------
+
+# Cues indicating imported / travel-associated risk rather than active local
+# transmission. Used only to distinguish imported_risk from direct/regional.
+_IMPORTED_CUES = (
+    "imported case",
+    "imported cases",
+    "travel-related",
+    "travel related",
+    "travel-associated",
+    "travellers returning",
+    "travelers returning",
+    "returning traveller",
+    "returning traveler",
+    "acquired abroad",
+    "imported from",
+    "case linked to travel",
+    "history of travel",
+)
 
 
 def assess_relevance(
@@ -534,40 +754,68 @@ def assess_relevance(
     match is ``global_context``.
     """
     text = f"{item.title} {item.summary}".lower()
+
+    def _mentions(value: str | None) -> bool:
+        return bool(value) and re.search(rf"\b{re.escape(value.lower())}\b", text) is not None
+
+    city_hit = _mentions(location.city)
+    state_hit = _mentions(location.state_or_region)
+    country_hit = _mentions(location.country)
+
     affected: list[str] = list(item.stated_areas)
-
-    # Collect candidate place tokens from the location hierarchy.
-    tokens = [
-        t.lower()
-        for t in (location.city, location.state_or_region, location.country, location.normalized)
-        if t
-    ]
-    matched = [t for t in tokens if t and t in text]
-
-    # Record affected areas the source explicitly names from our hierarchy.
     for t in (location.city, location.state_or_region, location.country):
-        if t and t.lower() in text and t not in affected:
+        if t and _mentions(t) and t not in affected:
             affected.append(t)
 
-    if matched:
-        # Direct if the most specific supplied token matched; otherwise regional.
-        finest = None
-        for t in (location.city, location.state_or_region, location.country):
-            if t:
-                finest = t.lower()
-                break
-        if finest and finest in text:
-            return "direct", f"source text mentions '{finest}'", affected
-        return "regional", "source mentions a broader area covering this location", affected
+    # Imported-risk cue: the location is named together with travel/importation
+    # language and the disease is described as coming from elsewhere (§8). This
+    # is explicitly NOT active local transmission.
+    imported = any(cue in text for cue in _IMPORTED_CUES)
 
+    # DIRECT: the finest granularity the *user supplied* is explicitly named.
+    if location.city and city_hit:
+        if imported:
+            return (
+                "imported_risk",
+                f"source names '{location.city}' with imported/travel-related framing",
+                affected,
+            )
+        return "direct", f"source explicitly names the requested city '{location.city}'", affected
+    if location.state_or_region and state_hit and not location.city:
+        if imported:
+            return (
+                "imported_risk",
+                f"source names '{location.state_or_region}' with imported/travel framing",
+                affected,
+            )
+        return (
+            "direct",
+            f"source explicitly names the requested state/region '{location.state_or_region}'",
+            affected,
+        )
+    if location.country and country_hit and not location.state_or_region and not location.city:
+        if imported:
+            return "imported_risk", f"source names '{location.country}' as an importation risk", affected
+        return "direct", f"source explicitly names the requested country '{location.country}'", affected
+
+    # REGIONAL: a broader area covering the requested location is named (e.g. the
+    # user asked for a city, but only the state/country is named), OR the country
+    # matches while a different sub-national area is named. Same-country ≠ local.
+    if state_hit or country_hit:
+        if imported:
+            return "imported_risk", "broader area named with importation framing", affected
+        return (
+            "regional",
+            "source names a broader area (state/country) covering the requested location, "
+            "not the specific requested place",
+            affected,
+        )
+
+    # No location token matched at all.
     if item.geo_scope == "global":
-        return "global_context", "global-scope source with no explicit local mention", affected
+        return "global_context", "global-scope source with no explicit mention of the requested location", affected
     if item.geo_scope in ("national", "regional"):
-        # National/regional source that doesn't name the user's place: regional
-        # context if the country matches, else global context.
-        if location.country and location.country.lower() in text:
-            return "regional", "national/regional source covering this country", affected
-        return "global_context", "broader-scope source without local specificity", affected
+        return "global_context", "broader-scope source that does not name the requested location", affected
     return "unknown", "insufficient location specificity to assess relevance", affected
 
 
@@ -615,6 +863,43 @@ class HealthIntelligence:
         """True when at least one provider is available."""
         return bool(self.providers)
 
+    def probe(self, locations: list[Location]) -> list[dict[str, Any]]:
+        """Per-source live diagnostics for the smoke test (§4, §23).
+
+        Fetches each provider independently and reports organization, endpoint
+        URL, HTTP/result status, item count, and the newest publication/update
+        dates seen. Failures are reported honestly (status='failed' with the
+        error) and never turned into successful results. Performs network I/O;
+        intended only for the optional live smoke script.
+        """
+        reports: list[dict[str, Any]] = []
+        for provider in self.providers:
+            url = getattr(provider, "url", None) or getattr(
+                getattr(provider, "spec", None), "url", None
+            )
+            entry: dict[str, Any] = {
+                "organization": provider.name,
+                "tier": getattr(provider, "tier", "unknown"),
+                "url": url,
+                "status": "failed",
+                "item_count": 0,
+                "newest_published": None,
+                "newest_updated": None,
+                "error": None,
+            }
+            try:
+                items = provider.fetch(locations)
+                entry["status"] = "ok"
+                entry["item_count"] = len(items)
+                pubs = [i.published_at for i in items if i.published_at]
+                upds = [i.updated_at for i in items if i.updated_at]
+                entry["newest_published"] = max(pubs) if pubs else None
+                entry["newest_updated"] = max(upds) if upds else None
+            except Exception as exc:  # noqa: BLE001 - honest failure reporting
+                entry["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+            reports.append(entry)
+        return reports
+
     # -- caching (§20) ------------------------------------------------------
     def _cache_key(self, provider: HealthDataProvider, locations: list[Location]) -> str:
         loc = "|".join(sorted(l.normalized.lower() for l in locations)) or "_none_"
@@ -636,8 +921,16 @@ class HealthIntelligence:
         return items, False
 
     # -- main entry ---------------------------------------------------------
-    def gather(self, locations: list[Location]) -> HealthIntelligenceResult:
-        """Fetch, analyze, and structure current findings for the locations."""
+    def gather(
+        self, locations: list[Location], query: str | None = None
+    ) -> HealthIntelligenceResult:
+        """Fetch, analyze, and structure current findings for the locations.
+
+        ``query`` is the user's optional free-text question. It is used only for
+        deterministic prioritisation of relevant findings (§10 query-awareness) —
+        never to decide *what is happening*, only to order/annotate what the
+        sources actually reported.
+        """
         now = self._clock().astimezone(timezone.utc)
         retrieved_at = now.isoformat()
         attempted: list[str] = []
@@ -647,6 +940,7 @@ class HealthIntelligence:
         notes: list[str] = []
         all_items: list[FeedItem] = []
         any_from_cache = False
+        query_terms = _query_terms(query)
 
         providers = self.providers
         if not providers:
@@ -687,16 +981,25 @@ class HealthIntelligence:
 
         deduped = self._dedupe(all_items)
 
-        findings = self._analyze(deduped, locations, now)
+        findings = self._analyze(deduped, locations, now, query_terms)
 
-        # §19 status resolution.
+        # §19 status resolution — distinguish "reached but nothing relevant" from
+        # "reached, has content, but nothing matched the query" (§10).
         if not findings:
             status = "no_relevant_current_data"
-            notes.append(
-                "Configured sources were reached but reported no current findings "
-                "relevant to the requested location(s). Absence of a report is not "
-                "proof that no outbreak exists."
-            )
+            if query_terms and deduped:
+                notes.append(
+                    "Configured sources were reached and returned current items, "
+                    "but none matched the requested topic/location. This is 'no "
+                    "relevant finding', not source unavailability. Absence of a "
+                    "report is not proof that no outbreak exists."
+                )
+            else:
+                notes.append(
+                    "Configured sources were reached but reported no current "
+                    "findings relevant to the requested location(s). Absence of a "
+                    "report is not proof that no outbreak exists."
+                )
         elif failed:
             status = "partial"
             notes.append(
@@ -732,15 +1035,21 @@ class HealthIntelligence:
         return ordered
 
     def _analyze(
-        self, items: list[FeedItem], locations: list[Location], now: datetime
+        self,
+        items: list[FeedItem],
+        locations: list[Location],
+        now: datetime,
+        query_terms: set[str] | None = None,
     ) -> list[DiseaseFinding]:
         """Turn deduped items into per-(disease, location) findings.
 
         For each location we build findings independently (§1: multiple locations
         evaluated separately). Findings for the same disease from multiple
         sources are merged with conflict detection (§10) and primary-official
-        precedence (§3).
+        precedence (§3). ``query_terms`` deterministically orders findings by
+        relevance to the user's question (§10) without changing their content.
         """
+        query_terms = query_terms or set()
         findings: list[DiseaseFinding] = []
         # When no location is supplied we still summarize global context.
         loc_iter: list[Location | None] = list(locations) if locations else [None]
@@ -750,19 +1059,39 @@ class HealthIntelligence:
             grouped: dict[str, list[tuple[FeedItem, dict[str, Any]]]] = {}
             for item in items:
                 text = f"{item.title} {item.summary}"
-                diseases = extract_diseases(text)
-                if item.stated_status and not diseases:
-                    # Source stated a status but no lexicon disease matched; still
-                    # record under a generic name from the title.
-                    diseases = [_short_disease_from_title(item.title)]
+                lex = extract_diseases(text)
+                if lex:
+                    diseases = lex
+                else:
+                    # Out-of-lexicon: recover the source's own disease name
+                    # rather than reducing it to arbitrary title words. The title
+                    # is the authoritative place for the disease name, so try it
+                    # first and only fall back to the full text if it yields
+                    # nothing.
+                    name, _from_lex = discover_disease(item.title, item.stated_disease)
+                    if name is None:
+                        name, _from_lex = discover_disease(text, item.stated_disease)
+                    if name is None and item.stated_status:
+                        # A stated status but no recoverable name: fall back to a
+                        # short title snippet so the finding is not silently lost.
+                        name = _short_disease_from_title(item.title)
+                    diseases = [name] if name else []
                 for disease in diseases:
                     analysis = self._analyze_item_for(item, disease, location, now)
                     grouped.setdefault(disease, []).append((item, analysis))
 
+            loc_findings: list[DiseaseFinding] = []
             for disease, contributions in grouped.items():
                 finding = self._merge_contributions(disease, contributions, location, now)
                 if finding is not None:
-                    findings.append(finding)
+                    loc_findings.append(finding)
+
+            # §10: deterministically prioritise findings matching the query, then
+            # by alert level, relevance and freshness. Content is unchanged.
+            loc_findings.sort(
+                key=lambda f: _finding_sort_key(f, query_terms), reverse=True
+            )
+            findings.extend(loc_findings)
 
         return findings
 
@@ -770,9 +1099,9 @@ class HealthIntelligence:
         self, item: FeedItem, disease: str, location: Location | None, now: datetime
     ) -> dict[str, Any]:
         text = f"{item.title} {item.summary}"
-        status, source_term = normalize_status(item.stated_status, text)
-        transmission = normalize_transmission(item.stated_transmission, text)
-        alert_level, alert_reason = classify_alert(text, item.stated_risk)
+        status, source_term, _status_reason = analyze_status(item.stated_status, text)
+        transmission, _tx_reason = analyze_transmission(item.stated_transmission, text)
+        alert_level, alert_reason = analyze_alert(text, item.stated_risk)
         freshness = compute_freshness(
             item.published_at,
             item.updated_at,
@@ -950,6 +1279,55 @@ def _norm_title(title: str) -> str:
 def _short_disease_from_title(title: str) -> str:
     words = _norm_title(title).split()
     return " ".join(words[:4]) if words else "unspecified"
+
+
+# Query-awareness (§10) — deterministic term extraction and ranking. No LLM.
+_QUERY_STOPWORDS = {
+    "what", "which", "is", "are", "the", "a", "an", "of", "in", "on", "at", "and",
+    "or", "for", "to", "with", "currently", "current", "now", "being", "reported",
+    "report", "reports", "outbreak", "outbreaks", "disease", "diseases", "should",
+    "be", "monitored", "activity", "developments", "region", "regional", "this",
+    "that", "there", "any", "about", "happening", "contagious", "infectious",
+    "health", "public", "my", "area", "me", "near",
+}
+
+
+def _query_terms(query: str | None) -> set[str]:
+    """Extract lowercased content terms from the user's question (deterministic)."""
+    if not query or not query.strip():
+        return set()
+    terms = {
+        t for t in re.findall(r"[a-z][a-z0-9\-']+", query.lower())
+        if len(t) > 2 and t not in _QUERY_STOPWORDS
+    }
+    return terms
+
+
+_ALERT_SORT = {"none": 0, "watch": 1, "elevated": 2, "official_alert": 3}
+_RELEVANCE_SORT = {
+    "direct": 4, "regional": 3, "imported_risk": 2, "global_context": 1, "unknown": 0
+}
+_FRESH_SORT = {"current": 3, "recent": 2, "stale": 1, "unknown": 0}
+_STATUS_ACTIVE = {"outbreak", "epidemic", "pandemic", "cluster", "conflicting"}
+
+
+def _finding_sort_key(finding: DiseaseFinding, query_terms: set[str]) -> tuple:
+    """Deterministic ranking key for findings (higher sorts first).
+
+    Prioritises (in order): query match, active status, alert level, location
+    relevance, freshness. Never changes finding content — only presentation
+    order (§10).
+    """
+    hay = f"{finding.disease_name} {' '.join(finding.affected_areas)}".lower()
+    query_match = 1 if query_terms and any(t in hay for t in query_terms) else 0
+    active = 1 if finding.status in _STATUS_ACTIVE else 0
+    return (
+        query_match,
+        active,
+        _ALERT_SORT.get(finding.alert_level, 0),
+        _RELEVANCE_SORT.get(finding.relevance_to_location, 0),
+        _FRESH_SORT.get(finding.freshness_state, 0),
+    )
 
 
 def _neg_iso(stamp: str) -> str:

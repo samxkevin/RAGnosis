@@ -134,7 +134,7 @@ class AgentService:
         live_data_status = "skipped"
         last_checked: str | None = None
         if route.uses("health_intelligence"):
-            health_result = self.health.gather(locations)
+            health_result = self.health.gather(locations, query=request.question)
             live_data_status = health_result.live_data_status
             last_checked = health_result.retrieved_at
             tools_used.append("health_intelligence")
