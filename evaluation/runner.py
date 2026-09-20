@@ -52,8 +52,15 @@ class EvaluationReport:
 
     @property
     def ok(self) -> bool:
-        """True when nothing FAILED (NA/UNVERIFIED do not fail the run)."""
-        return self.failed == 0
+        """True only when nothing FAILED and nothing is UNVERIFIED.
+
+        NOT_APPLICABLE is a legitimate, decided outcome (a case that does not
+        apply to a dimension) and does not fail the run. UNVERIFIED means the
+        contract could NOT be decided (an evaluator raised, or a required check
+        could not run); reporting overall success while any case is unverified
+        would silently turn "we don't know" into "it passed", so it is not ok.
+        """
+        return self.failed == 0 and self.unverified == 0
 
     def by_category(self) -> dict[str, dict[str, int]]:
         cats: dict[str, dict[str, int]] = defaultdict(
@@ -162,7 +169,13 @@ def format_report(report: EvaluationReport) -> str:
             if r.outcome is Outcome.UNVERIFIED:
                 lines.append(f"  {r.case_id}: {r.detail}")
     lines.append("-" * 72)
-    lines.append("RESULT: " + ("OK (no failures)" if report.ok else "FAILURES PRESENT"))
+    if report.ok:
+        result = "OK (no failures, no unverified)"
+    elif report.failed:
+        result = f"FAILURES PRESENT ({report.failed} failed, {report.unverified} unverified)"
+    else:
+        result = f"UNVERIFIED ({report.unverified} unverified, 0 failed) -> not OK"
+    lines.append("RESULT: " + result)
     return "\n".join(lines)
 
 

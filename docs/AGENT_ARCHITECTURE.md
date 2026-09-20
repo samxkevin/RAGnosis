@@ -322,6 +322,62 @@ self-tests, and never runs in CI. The reported figure is an end-to-end
 LLM factual accuracy, real-time surveillance coverage, or diagnostic validity.
 The health capability here is query-aware **feed retrieval**, not web search.
 
+`AgentEvaluationReport.ok` (and the component report's `ok`) is true only when
+there are **zero failed AND zero unverified** cases: an undecidable case is
+never silently reported as success.
+
+### Evaluation naming (use precisely)
+
+Three distinct kinds of result, never conflated:
+
+* **component contract pass rate** — `evaluation/run_evaluation.py`, the 63-case
+  building-block benchmark.
+* **end to end contract pass rate** — `evaluation/run_agent_evaluation.py`, the
+  agent-composition benchmark driving the real `AgentService.run()`.
+* **live model contract validation** — `evaluation/run_agent_evaluation.py
+  --live`, the same contract checked with the real generator when credentials
+  exist; reported `UNVERIFIED` when they do not.
+
+None of these is "LLM accuracy", "medical accuracy", or "diagnostic accuracy".
+The strongest defensible statement is that RAGnosis has an **end-to-end
+contract-tested agent architecture** whose routing, evidence provenance,
+uncertainty handling, geographic scoping, citation handling, and medical safety
+boundaries are evaluated deterministically, with optional live model and live
+source validation when the runtime permits.
+
+#### Grounding evaluator — what it does and does not do
+
+The grounding dimension is **deterministic structured comparison against
+controlled fixtures**, not general factual verification. It detects fixture-level
+violations: unsupported disease/condition claims (static lexicon AND
+source-supplied out-of-lexicon names), fabricated citations (PMIDs absent from
+the fused evidence), fabricated dates, absence-as-fact under
+unavailable/no-relevant data, active-spread/outbreak certainty without an active
+finding, unsupported transmissibility claims, local-presence claims for
+imported-only findings, and uncertainty-to-certainty conversion. Its explicit
+**limitation**: paraphrase and semantic entailment are not verified; a
+determined paraphrase that avoids the tracked tokens could evade it. This is why
+grounding is framed as a contract check, never as truth verification.
+
+### Auditable evaluation output
+
+`run_agent_evaluation.py --audit PATH` writes a JSON record per case:
+case id, category, question, location, route, tools used, fixture evidence,
+model, final answer, safety action, live-data status, and each contract
+dimension outcome, plus a UTC timestamp. Records contain **only observable
+execution metadata and the final answer** — never chain-of-thought or provider
+`reasoning_content`. Live mode writes the same records under the
+`live_model_contract_validation` mode label.
+
+### Compact real-world smoke suite
+
+`evaluation/live_smoke.py` runs three independent checks — (A) live health
+retrieval, (B) real LLM generation, (C) full agent composition — each reporting
+exactly one of `LIVE VERIFIED` (real dependency reached), `MOCK VERIFIED`
+(wiring proven with fakes, nothing contacted), or `UNVERIFIED` (could not decide;
+nothing fabricated). Offline it is all `MOCK VERIFIED`; with `--live` and no
+credentials/network the affected checks are `UNVERIFIED`, never faked or failed.
+
 ## API
 
 The composed agent is served at `POST /agent` (the original `/analyze` endpoint is

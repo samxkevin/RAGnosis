@@ -29,7 +29,7 @@ from pathlib import Path
 # Make the repo importable when run directly.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from evaluation.agent_runner import format_report, run  # noqa: E402
+from evaluation.agent_runner import LAST_AUDIT, format_report, run  # noqa: E402
 
 
 def _build_live_generator():
@@ -56,13 +56,41 @@ def main(argv: list[str] | None = None) -> int:
         "--live",
         action="store_true",
         help="Use the real text generator instead of scripted fakes "
-        "(opt-in, requires credentials, never CI).",
+        "(opt-in, requires credentials, never CI). This is LIVE MODEL CONTRACT "
+        "VALIDATION, not a factual-accuracy measurement.",
+    )
+    parser.add_argument(
+        "--audit",
+        metavar="PATH",
+        default=None,
+        help="Write an auditable JSON record per case (observable execution "
+        "metadata and final answers only — never chain-of-thought) to PATH.",
     )
     args = parser.parse_args(argv)
 
     live_gen = _build_live_generator() if args.live else None
-    report = run(live_generator=live_gen)
+    want_audit = bool(args.audit) or bool(live_gen)
+    report = run(live_generator=live_gen, audit=want_audit)
     print(format_report(report, live=bool(live_gen)))
+
+    if args.audit:
+        import json
+
+        payload = {
+            "mode": "live_model_contract_validation" if live_gen
+            else "offline_contract",
+            "model": (type(live_gen).__name__ if live_gen else "scripted-gen"),
+            "total": report.total,
+            "passed": report.passed,
+            "failed": report.failed,
+            "unverified": report.unverified,
+            "ok": report.ok,
+            "cases": list(LAST_AUDIT),
+        }
+        with open(args.audit, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2, ensure_ascii=False)
+        print(f"\nAudit record written to {args.audit} ({len(LAST_AUDIT)} cases).")
+
     return 0 if report.ok else 1
 
 

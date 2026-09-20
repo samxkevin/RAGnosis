@@ -48,3 +48,71 @@ def test_diagnosis_takes_priority_over_personal():
     # Both present -> diagnostic overreach message (priority 1).
     result = validate_response("This scan confirms cancer and you are infected.")
     assert result.action is SafetyAction.WITHHELD
+
+
+# --- Red-team regressions (Phase-6 §11): direct disease attribution ---------
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "You have dengue.",
+        "You have the flu.",
+        "You have an infection.",
+        "You probably have malaria.",
+        "You have probably got dengue.",
+        "You have a case of measles.",
+        "You've got dengue.",
+        "You're diagnosed with measles.",
+    ],
+)
+def test_direct_disease_attribution_flagged(text):
+    assert detect_personal_medical_claim(text), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "You should take this treatment.",
+        "You should take this medication.",
+        "You need to take these antibiotics.",
+        "You should start the prescription today.",
+    ],
+)
+def test_generic_treatment_authorization_flagged(text):
+    assert detect_personal_medical_claim(text), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # population / general-advice statements must remain possible
+        "People who have dengue may experience fever.",
+        "You do not have dengue based on this.",
+        "If you have symptoms, seek medical care.",
+        "You should consult a doctor.",
+        "You should get vaccinated.",
+        "You should rest and stay hydrated.",
+        "You should take precautions to avoid mosquito bites.",
+        "Those who have malaria need treatment.",
+        "You have questions about dengue.",
+        "The evidence does not establish an outbreak.",
+        "This image cannot confirm a diagnosis.",
+        "Dengue cases are increasing in the region.",
+    ],
+)
+def test_legitimate_statements_not_over_blocked(text):
+    assert detect_personal_medical_claim(text) == [], text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "You have dengue.",
+        "You should take this treatment.",
+    ],
+)
+def test_validate_withholds_redteam_gaps(text):
+    result = validate_response(text)
+    assert result.action is SafetyAction.WITHHELD, text

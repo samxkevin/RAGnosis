@@ -80,10 +80,82 @@ class AgentCaseResult:
         }
 
 
-def _run_case(case: AgentCase, live_generator: Any = None) -> AgentCaseResult:
+def _fixture_evidence_summary(case: AgentCase) -> dict[str, Any]:
+    """Observable summary of the deterministic evidence fed to a case.
+
+    Only declarative fixture inputs — never model reasoning."""
+    fx = case.fixtures
+    providers = []
+    for p in fx.get("providers_spec") or []:
+        providers.append({
+            "name": p.get("name"),
+            "tier": p.get("tier"),
+            "fail": p.get("fail", False),
+            "items": [
+                {"title": it.get("title"), "stated_status": it.get("stated_status"),
+                 "stated_disease": it.get("stated_disease"), "uri": it.get("uri"),
+                 "geo_scope": it.get("geo_scope")}
+                for it in p.get("items", [])
+            ],
+        })
+    return {
+        "providers": providers,
+        "pubmed_evidence": [
+            {"title": e.get("title"), "pmid": (e.get("metadata") or {}).get("pmid"),
+             "uri": e.get("uri")}
+            for e in (fx.get("evidence_specs") or [])
+        ],
+        "observations": [
+            {"label": o.get("label"), "confidence": o.get("confidence")}
+            for o in (fx.get("observation_specs") or [])
+        ],
+    }
+
+
+def _audit_record(case: AgentCase, response, dims: list[DimensionResult],
+                  model: str | None) -> dict[str, Any]:
+    """Auditable, OBSERVABLE-ONLY record for a live/offline case (§5).
+
+    Records case id, route, tools used, fixture evidence, model, final answer,
+    safety action, and each contract dimension outcome, plus a timestamp. It
+    deliberately excludes any chain-of-thought / reasoning_content — only the
+    declarative execution trace and the final answer text are stored.
+    """
+    from datetime import datetime, timezone
+
+    by_dim = {d.dimension: {"outcome": d.outcome.value, "detail": d.detail} for d in dims}
+    trace = getattr(response, "trace", None)
+    return {
+        "case_id": case.id,
+        "category": case.category,
+        "question": case.request.get("question"),
+        "location": case.request.get("location"),
+        "route": getattr(trace, "route", None),
+        "tools_used": list(getattr(trace, "tools_used", []) or []),
+        "fixture_evidence": _fixture_evidence_summary(case),
+        "model": model or "scripted-gen",
+        "final_answer": response.answer,
+        "safety_action": response.safety_action,
+        "live_data_status": response.live_data_status,
+        "grounding": by_dim.get("grounding"),
+        "citation": by_dim.get("citation"),
+        "provenance": by_dim.get("provenance"),
+        "uncertainty": by_dim.get("uncertainty"),
+        "conflict": by_dim.get("conflict"),
+        "geo_honesty": by_dim.get("geo_honesty"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# Collected audit records from the most recent run() call, when audit=True.
+LAST_AUDIT: list[dict[str, Any]] = []
+
+
+def _run_case(case: AgentCase, live_generator: Any = None,
+              audit: bool = False) -> AgentCaseResult:
     fx = case.fixtures
     try:
-        agent, _gen = build_agent(
+        agent, gen = build_agent(
             providers_spec=fx.get("providers_spec"),
             evidence_specs=fx.get("evidence_specs"),
             observation_specs=fx.get("observation_specs"),
@@ -112,6 +184,11 @@ def _run_case(case: AgentCase, live_generator: Any = None) -> AgentCaseResult:
         except Exception as exc:  # noqa: BLE001 - a broken check is UNVERIFIED
             outcome, detail = Outcome.UNVERIFIED, f"evaluator error: {exc}"
         dims.append(DimensionResult(dim, outcome, detail))
+
+    if audit:
+        model = getattr(response.trace, "generation_model", None) or \
+            (getattr(live_generator, "__class__", None).__name__ if live_generator else None)
+        LAST_AUDIT.append(_audit_record(case, response, dims, model))
     return AgentCaseResult(case.id, case.category, dims)
 
 
@@ -155,7 +232,14 @@ class AgentEvaluationReport:
 
     @property
     def ok(self) -> bool:
-        return self.failed == 0
+        """Overall success requires ZERO failures AND ZERO unverified cases.
+
+        An unverified case is one whose contract could not be decided (an
+        evaluator raised, or a required check could not run). Reporting overall
+        success while any required case is unverified would silently convert
+        "we don't know" into "it passed", so unverified > 0 is NOT ok.
+        """
+        return self.failed == 0 and self.unverified == 0
 
     def dimension_accuracy(self, dimension: str) -> tuple[int, int]:
         """(passed, applicable) for a dimension across all cases."""
@@ -201,6 +285,7 @@ class AgentEvaluationReport:
 def run(
     cases: list[AgentCase] | None = None,
     live_generator: Any = None,
+    audit: bool = False,
 ) -> AgentEvaluationReport:
     cases = cases if cases is not None else CASES
     if live_generator is not None:
@@ -208,6 +293,8 @@ def run(
         # detector self-tests) cannot be reproduced with a real model, so they
         # are skipped in live mode rather than fabricating an outcome (§10).
         cases = [c for c in cases if not _scripted_only(c)]
+    if audit:
+        LAST_AUDIT.clear()
     # Quiet the health-layer WARNING logs from deliberate-failure cases.
     health_logger = logging.getLogger("ragnosis.health")
     agent_logger = logging.getLogger("ragnosis.agent")
@@ -216,7 +303,7 @@ def run(
     agent_logger.setLevel(logging.ERROR)
     try:
         return AgentEvaluationReport(
-            results=[_run_case(c, live_generator) for c in cases]
+            results=[_run_case(c, live_generator, audit=audit) for c in cases]
         )
     finally:
         health_logger.setLevel(prev[0])
@@ -279,7 +366,13 @@ def format_report(report: AgentEvaluationReport, live: bool = False) -> str:
         for cid, dim, detail in report.unverifieds():
             lines.append(f"  {cid} [{dim}]: {detail}")
     lines.append("-" * 72)
-    lines.append("RESULT: " + ("OK (no failures)" if report.ok else "FAILURES PRESENT"))
+    if report.ok:
+        result = "OK (no failures, no unverified)"
+    elif report.failed:
+        result = f"FAILURES PRESENT ({report.failed} failed, {report.unverified} unverified)"
+    else:
+        result = f"UNVERIFIED ({report.unverified} unverified, 0 failed) -> not OK"
+    lines.append("RESULT: " + result)
     if not live:
         lines.append("Note: this is an end-to-end CONTRACT pass rate over deterministic "
                      "fixtures, not a measure of LLM factual accuracy.")

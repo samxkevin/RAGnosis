@@ -16,9 +16,79 @@ import pytest
 
 from evaluation.agent_cases import CASES
 from evaluation.agent_evaluators import DIMENSIONS
-from evaluation.agent_runner import DIMENSION_ORDER, run
+from evaluation.agent_runner import (
+    DIMENSION_ORDER,
+    AgentCaseResult,
+    AgentEvaluationReport,
+    DimensionResult,
+    format_report,
+    run,
+)
 from evaluation.outcome import Outcome
 from multimodal.safety import detect_personal_medical_claim
+
+
+def _case_result(case_id: str, *outcomes: Outcome, error: str | None = None):
+    dims = [DimensionResult(f"dim{i}", o, "") for i, o in enumerate(outcomes)]
+    return AgentCaseResult(case_id, "synthetic", dims, error=error)
+
+
+# --- Report semantics: ok must require zero failed AND zero unverified -------
+def test_report_ok_when_all_pass():
+    report = AgentEvaluationReport(results=[
+        _case_result("a", Outcome.PASS, Outcome.NOT_APPLICABLE),
+        _case_result("b", Outcome.PASS, Outcome.PASS),
+    ])
+    assert report.failed == 0
+    assert report.unverified == 0
+    assert report.ok is True
+    assert "OK" in format_report(report)
+
+
+def test_report_not_ok_when_a_case_is_unverified():
+    report = AgentEvaluationReport(results=[
+        _case_result("a", Outcome.PASS, Outcome.PASS),
+        _case_result("b", Outcome.PASS, Outcome.UNVERIFIED),
+    ])
+    assert report.failed == 0
+    assert report.unverified == 1
+    # The critical regression: no failures, but an unverified case must NOT be ok.
+    assert report.ok is False
+    text = format_report(report)
+    assert "UNVERIFIED" in text
+    assert "not OK" in text
+
+
+def test_report_not_ok_when_a_case_errors():
+    report = AgentEvaluationReport(results=[
+        _case_result("a", Outcome.PASS),
+        _case_result("b", error="RuntimeError: boom"),
+    ])
+    # An errored case is both failed and unverified per AgentCaseResult; either
+    # way the report must not be ok.
+    assert report.ok is False
+
+
+def test_report_not_ok_when_a_case_fails():
+    report = AgentEvaluationReport(results=[
+        _case_result("a", Outcome.PASS),
+        _case_result("b", Outcome.FAIL),
+    ])
+    assert report.failed == 1
+    assert report.ok is False
+    assert "FAILURES PRESENT" in format_report(report)
+
+
+def test_component_runner_ok_requires_no_unverified():
+    # The component runner shares the same corrected semantics.
+    from evaluation.evaluators import CaseResult, Outcome as CO
+    from evaluation.runner import EvaluationReport
+
+    passing = CaseResult("x", "routing", "routing", CO.PASS, "")
+    unver = CaseResult("y", "routing", "routing", CO.UNVERIFIED, "could not decide")
+    # (case_id, kind, category, outcome, detail)
+    assert EvaluationReport(results=[passing]).ok is True
+    assert EvaluationReport(results=[passing, unver]).ok is False
 
 
 def test_benchmark_has_full_dimension_coverage():
@@ -84,3 +154,36 @@ def test_infection_prediction_is_flagged(text):
 )
 def test_benign_statements_not_flagged(text):
     assert not detect_personal_medical_claim(text)
+
+
+# --- Final report generator (Phase-6 §17) -----------------------------------
+def test_final_report_builds_and_is_consistent():
+    from evaluation.final_report import build_report, format_markdown
+
+    rep = build_report()
+    # Structure present.
+    for key in ("component_benchmark", "end_to_end_benchmark", "dimensions",
+                "live_model_contract_validation", "live_health_validation"):
+        assert key in rep, key
+    # Every metric has numerator/denominator/status.
+    for d, m in rep["dimensions"].items():
+        assert set(m) == {"numerator", "denominator", "status"}, d
+        assert m["numerator"] <= m["denominator"]
+    # Offline benchmarks must be green and decided.
+    assert rep["component_benchmark"]["ok"] is True
+    assert rep["end_to_end_benchmark"]["ok"] is True
+    # Live checks are UNVERIFIED unless the environment provides them; they must
+    # never be fabricated as PASS here.
+    assert rep["live_model_contract_validation"]["status"] in ("UNVERIFIED", "PASS")
+    assert rep["live_health_validation"]["status"] in ("UNVERIFIED", "PASS")
+    # Markdown renders without error and frames results as a contract pass rate.
+    md = format_markdown(rep).lower()
+    assert "contract pass rate" in md
+    # The only place accuracy terms may appear is the negated disclaimer
+    # ("NOT LLM/medical/diagnostic accuracy"); they must never be asserted.
+    assert "not llm/medical/diagnostic accuracy" in md
+    import re as _re
+    for forbidden in ("llm accuracy", "medical accuracy", "diagnostic accuracy"):
+        for m in _re.finditer(_re.escape(forbidden), md):
+            window = md[max(0, m.start() - 30):m.start()]
+            assert "not " in window, f"{forbidden!r} asserted without negation"

@@ -145,6 +145,19 @@ _DEFINITIVE_PATTERNS = (
     r"(?:cancer|malignan\w+|a\s+tumou?r)",
 )
 
+# Disease/condition names that, when attributed directly to "you", constitute a
+# personal medical determination ("you have dengue"). Kept small and explicit;
+# generic nouns (disease/infection/virus/illness) are handled by a separate
+# pattern above. "the flu"/"a cold" colloquialisms are included.
+_PERSONAL_DISEASE_NAMES = (
+    "dengue", "malaria", "cholera", "measles", "mpox", "monkeypox", "ebola",
+    "marburg", "influenza", "the flu", "flu", "covid-19", "covid", "zika",
+    "chikungunya", "typhoid", "tuberculosis", "tb", "hepatitis", "nipah",
+    "polio", "diphtheria", "meningitis", "rabies", "plague", "cancer",
+    "a tumour", "a tumor", "pneumonia", "a cold", "leptospirosis",
+    "yellow fever", "lassa fever", "scrub typhus", "japanese encephalitis",
+)
+
 # §18 — personal medical determination patterns. These assert something about
 # the *individual user's* health status, infection, or treatment authorization,
 # which RAGnosis must never do. Population/regional statements are NOT matched
@@ -155,7 +168,27 @@ _PERSONAL_MEDICAL_PATTERNS = (
     r"\byou\s+(?:have|are|might have|probably have|likely have|may have)\s+"
     r"(?:been\s+)?(?:infected|contracted|caught|got|developed)\b",
     r"\byou\s+(?:are|'re)\s+(?:infected|contagious|sick with|ill with)\b",
-    r"\byou\s+(?:have|'ve got)\s+(?:the\s+)?(?:disease|infection|virus|illness)\b",
+    r"\byou\s+(?:probably\s+|likely\s+|definitely\s+|certainly\s+|clearly\s+"
+    r"|most likely\s+)?(?:have|'ve got)\s+(?:the\s+|a\s+|an\s+)?"
+    r"(?:disease|infection|virus|illness)\b",
+    # Direct disease attribution to the user: "you have dengue", "you have the
+    # flu", "you've got measles", "you probably have malaria". An optional hedge
+    # (probably/likely/definitely) — before OR after the verb — is still a
+    # personal determination. A leading negation is excluded by the
+    # negation-window check in detect_personal_medical_claim.
+    r"\byou\s+(?:probably\s+|likely\s+|definitely\s+|certainly\s+|clearly\s+"
+    r"|most likely\s+)?"
+    r"(?:have|'ve|are\s+diagnosed\s+with)\s*"
+    r"(?:probably\s+|likely\s+|definitely\s+|certainly\s+|clearly\s+|"
+    r"most likely\s+)?"
+    r"(?:got\s+|gotten\s+)?"
+    r"(?:a\s+case\s+of\s+|an?\s+|the\s+)?"
+    r"(?:" + "|".join(re.escape(_d) for _d in _PERSONAL_DISEASE_NAMES) + r")\b",
+    # Contraction form: "you've got dengue" / "you're diagnosed with measles".
+    r"\byou'(?:ve|re)\s+(?:got\s+|gotten\s+|been\s+diagnosed\s+with\s+|"
+    r"diagnosed\s+with\s+)?"
+    r"(?:probably\s+|likely\s+)?(?:a\s+case\s+of\s+|an?\s+|the\s+)?"
+    r"(?:" + "|".join(re.escape(_d) for _d in _PERSONAL_DISEASE_NAMES) + r")\b",
     # predicting the user will get infected. An optional adverb
     # (probably/likely/definitely/certainly/soon) may sit between "will" and the
     # verb, and "become infected" is included alongside get/catch/contract.
@@ -166,10 +199,20 @@ _PERSONAL_MEDICAL_PATTERNS = (
     r"\byou\s+are\s+(?:definitely|certainly|likely|going to be)\s+infected\b",
     r"\byou\s+(?:are|'re)\s+(?:probably|likely|going to be)\s+"
     r"(?:going to\s+)?(?:get|catch|become)\s+(?:infected|ill|sick)\b",
-    # treatment as authorized for the user
-    r"\byou\s+should\s+(?:take|start|use|be prescribed)\s+"
-    r"(?:the\s+)?(?:antibiotics?|antivirals?|medication|drug|treatment|"
+    # treatment as authorized for the user. Generic determiners
+    # (this/that/the/a) are included so "you should take this treatment" is
+    # caught, not only named drugs. General wellbeing advice ("you should
+    # consult a doctor", "you should get vaccinated", "you should rest") is NOT
+    # matched because it does not name a medication/drug/treatment object.
+    r"\byou\s+should\s+(?:take|start|begin|use|be prescribed)\s+"
+    r"(?:this|that|the|these|those|a|an|some\s+)?\s*"
+    r"(?:antibiotics?|antivirals?|medications?|medicines?|drugs?|treatments?|"
+    r"pills?|doses?|prescriptions?|"
     r"amoxicillin|azithromycin|doxycycline|oseltamivir|tamiflu)\b",
+    r"\byou\s+(?:need to|must)\s+(?:take|start|use)\s+"
+    r"(?:this|that|the|these|those|a|an|some\s+)?\s*"
+    r"(?:antibiotics?|antivirals?|medications?|medicines?|drugs?|treatments?|"
+    r"pills?|doses?|prescriptions?)\b",
     r"\bi\s+(?:diagnose|prescribe)\s+you\b",
     # individualized infection risk stated as fact
     r"\byour\s+(?:personal\s+)?(?:risk of infection|infection risk)\s+is\s+"
