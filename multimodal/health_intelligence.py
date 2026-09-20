@@ -22,11 +22,12 @@ framework, no headless browser, no second LLM.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import time
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Iterable, Protocol
@@ -940,7 +941,7 @@ class HealthIntelligence:
         notes: list[str] = []
         all_items: list[FeedItem] = []
         any_from_cache = False
-        query_terms = _query_terms(query)
+        query_ctx = build_query_context(query, locations)
 
         providers = self.providers
         if not providers:
@@ -981,13 +982,13 @@ class HealthIntelligence:
 
         deduped = self._dedupe(all_items)
 
-        findings = self._analyze(deduped, locations, now, query_terms)
+        findings = self._analyze(deduped, locations, now, query_ctx)
 
         # §19 status resolution — distinguish "reached but nothing relevant" from
         # "reached, has content, but nothing matched the query" (§10).
         if not findings:
             status = "no_relevant_current_data"
-            if query_terms and deduped:
+            if not query_ctx.is_empty and deduped:
                 notes.append(
                     "Configured sources were reached and returned current items, "
                     "but none matched the requested topic/location. This is 'no "
@@ -1039,17 +1040,17 @@ class HealthIntelligence:
         items: list[FeedItem],
         locations: list[Location],
         now: datetime,
-        query_terms: set[str] | None = None,
+        query_ctx: "QueryContext | None" = None,
     ) -> list[DiseaseFinding]:
         """Turn deduped items into per-(disease, location) findings.
 
         For each location we build findings independently (§1: multiple locations
         evaluated separately). Findings for the same disease from multiple
         sources are merged with conflict detection (§10) and primary-official
-        precedence (§3). ``query_terms`` deterministically orders findings by
-        relevance to the user's question (§10) without changing their content.
+        precedence (§3). ``query_ctx`` deterministically orders findings by
+        relevance to the user's question (§2/§10) without changing their content.
         """
-        query_terms = query_terms or set()
+        query_ctx = query_ctx or QueryContext()
         findings: list[DiseaseFinding] = []
         # When no location is supplied we still summarize global context.
         loc_iter: list[Location | None] = list(locations) if locations else [None]
@@ -1083,14 +1084,22 @@ class HealthIntelligence:
             loc_findings: list[DiseaseFinding] = []
             for disease, contributions in grouped.items():
                 finding = self._merge_contributions(disease, contributions, location, now)
-                if finding is not None:
-                    loc_findings.append(finding)
+                if finding is None:
+                    continue
+                # §2/§10: annotate query relevance (presentational only).
+                q_score, reason = query_ctx.score(finding)
+                if q_score > 0:
+                    finding = replace(
+                        finding,
+                        matched_query=True,
+                        query_score=q_score,
+                        query_relevance_reason=reason,
+                    )
+                loc_findings.append(finding)
 
             # §10: deterministically prioritise findings matching the query, then
             # by alert level, relevance and freshness. Content is unchanged.
-            loc_findings.sort(
-                key=lambda f: _finding_sort_key(f, query_terms), reverse=True
-            )
+            loc_findings.sort(key=_finding_sort_key, reverse=True)
             findings.extend(loc_findings)
 
         return findings
@@ -1234,8 +1243,18 @@ class HealthIntelligence:
 
         freshness = _best_freshness(a["freshness"] for _, a in ordered)
 
+        # Deterministic finding id: disease + normalized location + the set of
+        # backing source URIs/titles. Stable across runs; never random (§10/§15).
+        loc_key = (location.normalized if location else "unspecified")
+        src_key = "|".join(sorted((it.uri or it.title or "") for it, _ in ordered))
+        finding_id = "find-" + hashlib.sha1(
+            f"{disease}|{loc_key}|{src_key}".encode("utf-8")
+        ).hexdigest()[:10]
+
         return DiseaseFinding(
             disease_name=disease,
+            finding_id=finding_id,
+            evidence_ids=[f"ev-{finding_id}"],
             requested_location=(location.raw if location else "unspecified"),
             normalized_location=(location.normalized if location else None),
             transmissible=transmissible,
@@ -1292,6 +1311,104 @@ _QUERY_STOPWORDS = {
 }
 
 
+@dataclass(frozen=True)
+class QueryContext:
+    """Deterministic query-awareness context (Phase-4 §2).
+
+    Built from the user's free-text question and the resolved locations, this
+    captures the terms the health layer uses to *prioritise* which findings are
+    surfaced first. It is a small, transparent, no-LLM mechanism:
+
+    * ``disease_terms``  — query tokens that name a disease in the lexicon.
+    * ``keyword_terms``  — remaining content tokens (non-stopword).
+    * ``location_terms`` — city/state/country tokens from the resolved locations.
+
+    It never fetches or invents anything and never changes a finding's content;
+    it only influences ordering and sets ``matched_query`` on findings.
+    """
+
+    disease_terms: frozenset[str] = frozenset()
+    keyword_terms: frozenset[str] = frozenset()
+    location_terms: frozenset[str] = frozenset()
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.disease_terms or self.keyword_terms or self.location_terms)
+
+    @property
+    def all_terms(self) -> set[str]:
+        return set(self.disease_terms) | set(self.keyword_terms) | set(self.location_terms)
+
+    def score(self, finding: DiseaseFinding) -> tuple[int, str | None]:
+        """Return a graded (score, reason) for a finding against the query.
+
+        Higher is more relevant. A disease-name match (weight 4) outranks a
+        keyword match (weight 2), which outranks a location-only match (weight
+        1); scores add. ``score == 0`` means the finding did not match the query.
+        Graded scoring lets ``dengue`` outrank a same-location ``malaria`` when
+        the user asked about dengue, without changing either finding's content.
+        """
+        disease_hay = finding.disease_name.lower()
+        area_hay = " ".join(finding.affected_areas).lower()
+        loc_hay = f"{finding.requested_location} {finding.normalized_location or ''}".lower()
+
+        score = 0
+        reasons: list[str] = []
+        if self.disease_terms and any(t in disease_hay for t in self.disease_terms):
+            score += 4
+            reasons.append("disease name matches query")
+        if self.keyword_terms and any(
+            t in disease_hay or t in area_hay for t in self.keyword_terms
+        ):
+            score += 2
+            reasons.append("query keyword matches finding")
+        if self.location_terms and any(
+            t in area_hay or t in loc_hay for t in self.location_terms
+        ):
+            score += 1
+            reasons.append("query location matches finding")
+        return score, ("; ".join(reasons) if reasons else None)
+
+    def match(self, finding: DiseaseFinding) -> tuple[bool, str | None]:
+        """Return (matched, reason). ``matched`` is True when score > 0."""
+        score, reason = self.score(finding)
+        return score > 0, reason
+
+
+def build_query_context(
+    query: str | None, locations: Iterable[Location] | None = None
+) -> QueryContext:
+    """Build a :class:`QueryContext` from the user's question and locations.
+
+    Deterministic and offline. Disease tokens are those that appear in the
+    transparent lexicon; location tokens come from the resolved location
+    hierarchy (never inferred). No second LLM is involved (§2).
+    """
+    tokens = _query_terms(query)
+    disease_terms = {t for t in tokens if any(t in name for name in DISEASE_LEXICON)}
+    # Also catch multi-word lexicon diseases mentioned verbatim in the query.
+    if query:
+        low = query.lower()
+        for name in DISEASE_LEXICON:
+            if " " in name and name in low:
+                disease_terms.update(name.split())
+    keyword_terms = tokens - disease_terms
+
+    location_terms: set[str] = set()
+    for loc in locations or []:
+        for part in (loc.city, loc.state_or_region, loc.country, loc.normalized):
+            if part:
+                for tok in re.findall(r"[a-z][a-z0-9\-']+", part.lower()):
+                    if len(tok) > 2:
+                        location_terms.add(tok)
+
+    return QueryContext(
+        disease_terms=frozenset(disease_terms),
+        keyword_terms=frozenset(keyword_terms),
+        location_terms=frozenset(location_terms),
+    )
+
+
 def _query_terms(query: str | None) -> set[str]:
     """Extract lowercased content terms from the user's question (deterministic)."""
     if not query or not query.strip():
@@ -1311,15 +1428,15 @@ _FRESH_SORT = {"current": 3, "recent": 2, "stale": 1, "unknown": 0}
 _STATUS_ACTIVE = {"outbreak", "epidemic", "pandemic", "cluster", "conflicting"}
 
 
-def _finding_sort_key(finding: DiseaseFinding, query_terms: set[str]) -> tuple:
+def _finding_sort_key(finding: DiseaseFinding) -> tuple:
     """Deterministic ranking key for findings (higher sorts first).
 
     Prioritises (in order): query match, active status, alert level, location
     relevance, freshness. Never changes finding content — only presentation
-    order (§10).
+    order (§2/§10). Query relevance is read from the finding's ``matched_query``
+    flag, set earlier by :meth:`QueryContext.match`.
     """
-    hay = f"{finding.disease_name} {' '.join(finding.affected_areas)}".lower()
-    query_match = 1 if query_terms and any(t in hay for t in query_terms) else 0
+    query_match = finding.query_score
     active = 1 if finding.status in _STATUS_ACTIVE else 0
     return (
         query_match,

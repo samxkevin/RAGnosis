@@ -41,6 +41,7 @@ from .schemas import (
     Modality,
     MultimodalRequest,
     RetrievalStatus,
+    assign_evidence_ids,
 )
 from .service import BASE_LIMITATIONS, MultimodalRAGService
 
@@ -141,6 +142,10 @@ class AgentService:
             # Fuse health findings into evidence with provenance kinds (§14).
             evidence = evidence + health_findings_to_evidence(health_result)
 
+        # Assign stable, deterministic ids across the fused evidence so the
+        # structured answer can link each claim to its evidence (§4/§15).
+        evidence = assign_evidence_ids(evidence)
+
         # --- grounded generation ------------------------------------------
         prompt = self._build_prompt(
             request,
@@ -168,6 +173,32 @@ class AgentService:
         if health_result is not None:
             limitations += list(HEALTH_LIMITATIONS)
 
+        # Generation always ran to produce the answer; record it as a tool.
+        tools_used = tools_used + ["generation"]
+
+        # --- declarative execution metadata (Phase-4 §5) ------------------
+        evidence_counts: dict[str, int] = {}
+        for e in evidence:
+            evidence_counts[e.kind] = evidence_counts.get(e.kind, 0) + 1
+
+        sources_map: dict[str, str] = {}
+        cache_hit = False
+        conflicts_present = False
+        if health_result is not None:
+            for name in health_result.sources_succeeded:
+                sources_map[name] = (
+                    "cache" if name in health_result.cache_hits else "ok"
+                )
+            for name in health_result.sources_failed:
+                sources_map[name] = "failed"
+            cache_hit = bool(health_result.cache_hits)
+            conflicts_present = any(
+                f.status == "conflicting" or f.conflict_summary
+                for f in health_result.findings
+            )
+
+        used_current_data = live_data_status in ("ok", "partial")
+
         trace = ExecutionTrace(
             route=route.route,
             tools_used=tools_used,
@@ -177,6 +208,11 @@ class AgentService:
             locations=[loc.to_dict() for loc in locations],
             last_checked=last_checked,
             safety_action=validation.action.value,
+            sources=sources_map,
+            evidence_counts=evidence_counts,
+            used_current_data=used_current_data,
+            cache_hit=cache_hit,
+            conflicts_present=conflicts_present,
         )
 
         return AgentResponse(
@@ -301,10 +337,14 @@ Write a concise, evidence-grounded response. Keep image observations, biomedical
 literature, and current public-health information clearly separated and labeled.
 For any disease finding, report: disease, whether transmissible and how, current
 status (using the source's own term), affected areas, relevance to the requested
-location, official risk if stated (else "risk assessment unavailable"), the last-
-checked timestamp, and the source(s). Only cite PubMed records present in the
-retrieved evidence; never invent a PMID or a source. State uncertainty and data
-gaps explicitly rather than suppressing them. End by directing personal medical
+location, official risk if stated (else "risk assessment unavailable"), the
+freshness_state, the last-checked timestamp, and the source(s). Each finding
+carries a finding_id and evidence_ids linking it to its source(s); rely on that
+structured provenance rather than inventing where a claim came from. Only cite
+PubMed records present in the retrieved evidence; never invent a PMID or a source.
+Make explicit what was OBSERVED (image), RETRIEVED (literature/live sources),
+CURRENT (fresh live data), or NOT ESTABLISHED. State uncertainty and data gaps
+explicitly rather than suppressing them. End by directing personal medical
 questions to a qualified clinician.
 """
 
@@ -312,19 +352,32 @@ questions to a qualified clinician.
 def _health_prompt_note(result: HealthIntelligenceResult) -> str:
     if result.live_data_status == "unavailable":
         return (
-            "Live public-health sources were UNAVAILABLE. Do not state any current "
-            "outbreak status; report that current data could not be retrieved."
+            "Live public-health sources were UNAVAILABLE. Do NOT state any current "
+            "outbreak status and do NOT convert this unavailability into a factual "
+            "answer such as 'there is no outbreak'. Report only that current data "
+            "could not be retrieved at this time."
         )
     if result.live_data_status == "no_relevant_current_data":
         return (
             "Live sources were reached but found no current findings relevant to "
-            "the requested location(s). Say this plainly; do not infer an outbreak "
-            "or its absence."
+            "the requested location(s). Say this plainly as 'no relevant current "
+            "report was found' — this is NOT the same as 'there is no outbreak'. "
+            "Do not infer an outbreak or its absence."
         )
     cache = " (some results served from a short-lived cache)" if result.from_cache else ""
+    partial = (
+        " Some sources failed and were omitted (partial coverage)."
+        if result.live_data_status == "partial"
+        else ""
+    )
+    # §11: make the freshness distinction explicit so the generator never labels
+    # stale/unknown-dated findings as "current".
     return (
-        f"Live data retrieved at {result.retrieved_at}{cache}. Use only the findings "
-        "below for current status."
+        f"Live data retrieved at {result.retrieved_at}{cache}.{partial} Use only the "
+        "findings below for current status. Respect each finding's freshness_state: "
+        "report 'current' only when freshness_state is 'current'; describe 'recent', "
+        "'stale', or 'unknown' freshness explicitly rather than implying it is "
+        "up-to-the-minute. Preserve each finding's dates and last-checked timestamp."
     )
 
 
@@ -338,7 +391,9 @@ def health_findings_to_evidence(result: HealthIntelligenceResult) -> list[Eviden
 
     Primary/regional official sources become ``health_surveillance``; secondary
     (media) sources become ``health_news``. Full structured metadata is retained
-    so the UI and safety layer can inspect it (§14).
+    so the UI and safety layer can inspect it (§14). Each piece of evidence gets
+    a deterministic ``evidence_id`` derived from the finding id so the structured
+    answer can link finding -> evidence -> source (Phase-4 §4/§10/§15).
     """
     evidence: list[Evidence] = []
     for finding in result.findings:
@@ -346,6 +401,8 @@ def health_findings_to_evidence(result: HealthIntelligenceResult) -> list[Eviden
         primary_source = finding.sources[0] if finding.sources else None
         uri = primary_source.uri if primary_source else None
         excerpt = _finding_excerpt(finding)
+        # Stable id tied to the finding so linkage survives serialization.
+        eid = f"ev-{finding.finding_id}" if finding.finding_id else ""
         evidence.append(
             Evidence(
                 source=finding.classification_source or "public health source",
@@ -354,10 +411,13 @@ def health_findings_to_evidence(result: HealthIntelligenceResult) -> list[Eviden
                 uri=uri,
                 score=None,
                 kind=kind,
+                evidence_id=eid,
                 metadata={
+                    "finding_id": finding.finding_id,
                     "finding": finding.to_dict(),
                     "retrieved_at": result.retrieved_at,
                     "from_cache": result.from_cache,
+                    "sources": [s.to_dict() for s in finding.sources],
                 },
             )
         )

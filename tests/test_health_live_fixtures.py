@@ -1,9 +1,10 @@
-"""Parse real captured source samples offline (§4 pipeline validation).
+"""Parse representative source samples offline (§4 pipeline validation).
 
-These use verbatim samples captured from the real authoritative endpoints on
-2026-09-20 (see tests/fixtures/README.md). They prove the parsers and the
-end-to-end analysis pipeline handle actual source structure — WITHOUT any
-network access. They are not live data and are not treated as current status.
+These use structurally faithful, representative samples modeled on the real
+authoritative endpoints (see tests/fixtures/README.md for honest provenance —
+they are NOT raw live captures). They prove the parsers and the end-to-end
+analysis pipeline handle each source's real structure WITHOUT any network
+access. They are not live data and are not treated as current status.
 """
 
 from datetime import datetime, timezone

@@ -185,6 +185,14 @@
       const t = d.trace || {};
       const locs = (t.locations || []).map(l => esc(l.normalized || l.raw) +
         ' <span class="muted">(' + esc(l.granularity) + ')</span>').join(', ') || '—';
+      const srcMap = t.sources || {};
+      const srcHtml = Object.keys(srcMap).length
+        ? Object.keys(srcMap).map(k => esc(k) + ': <strong>' + esc(srcMap[k]) + '</strong>').join(' &middot; ')
+        : '—';
+      const evc = t.evidence_counts || {};
+      const evcHtml = Object.keys(evc).length
+        ? Object.keys(evc).map(k => esc(k) + '=' + esc(evc[k])).join(', ')
+        : '—';
       document.getElementById('trace').innerHTML =
         '<h3>Execution trace</h3>' +
         '<p class="muted">Route: <code>' + esc(t.route || d.route) + '</code> &middot; ' +
@@ -192,6 +200,11 @@
         '<p class="muted">Retrieval: ' + esc(t.retrieval_status) + ' &middot; ' +
         'Live data: ' + esc(t.live_data_status) + ' &middot; ' +
         'Safety: ' + esc(t.safety_action) + '</p>' +
+        '<p class="muted">Sources queried: ' + srcHtml + '</p>' +
+        '<p class="muted">Evidence by type: ' + evcHtml + '</p>' +
+        '<p class="muted">Current data used: <strong>' + esc(String(!!t.used_current_data)) + '</strong>' +
+        ' &middot; Cache hit: <strong>' + esc(String(!!t.cache_hit)) + '</strong>' +
+        ' &middot; Conflicts present: <strong>' + esc(String(!!t.conflicts_present)) + '</strong></p>' +
         '<p class="muted">Requested location(s): ' + locs + '</p>' +
         (t.last_checked ? '<p class="muted">Last checked: <strong>' + esc(t.last_checked) + '</strong></p>' : '') +
         ((t.router_reasons || []).length ? '<details><summary class="muted">why this route</summary><ul class="muted">' +
@@ -266,27 +279,42 @@
       const fs = h.findings || [];
       if (fs.length) {
         html += '<table><thead><tr><th>Disease</th><th>Status</th><th>Transmission</th>' +
-          '<th>Relevance</th><th>Risk</th><th>Alert</th><th>Freshness</th><th>Sources</th></tr></thead><tbody>';
+          '<th>Affected areas</th><th>Relevance</th><th>Risk</th><th>Alert</th><th>Freshness</th><th>Sources</th></tr></thead><tbody>';
         fs.forEach(f => {
           const alertCls = f.alert_level === 'official_alert' || f.alert_level === 'elevated' ? 'alert'
             : (f.alert_level === 'watch' ? 'watch' : '');
+          const qmatch = f.matched_query
+            ? ' <span class="pill">query match</span>' : '';
+          const areas = (f.affected_areas || []).length
+            ? esc((f.affected_areas || []).join(', ')) : '<span class="muted">—</span>';
           html += '<tr>' +
-            '<td><strong>' + esc(f.disease_name) + '</strong>' +
+            '<td><strong>' + esc(f.disease_name) + '</strong>' + qmatch +
+              (f.finding_id ? '<br><span class="muted">id ' + esc(f.finding_id) + '</span>' : '') +
               (f.uncertainty ? '<br><span class="muted">' + esc(f.uncertainty) + '</span>' : '') +
-              (f.conflict_summary ? '<br><span class="muted">' + esc(f.conflict_summary) + '</span>' : '') + '</td>' +
+              (f.conflict_summary ? '<br><span class="muted">' + esc(f.conflict_summary) + '</span>' : '') +
+              (f.data_gap_state ? '<br><span class="muted">gap: ' + esc(f.data_gap_state) + '</span>' : '') + '</td>' +
             '<td>' + esc(f.status) + (f.status_source_term ? '<br><span class="muted">"' + esc(f.status_source_term) + '"</span>' : '') +
               '<br><span class="muted">' + esc(f.geo_scope) + '</span></td>' +
             '<td>' + esc(f.transmission_class) + '</td>' +
+            '<td>' + areas + '</td>' +
             '<td>' + esc(f.relevance_to_location) + '<br><span class="muted">' + esc(f.requested_location) + '</span></td>' +
             '<td>' + esc(f.risk_assessment) + (f.severity ? '<br>' + esc(f.severity) : '') + '</td>' +
             '<td><span class="pill ' + alertCls + '">' + esc(f.alert_level) + '</span></td>' +
             '<td>' + esc(f.freshness_state) + '<br><span class="muted">' + esc(f.updated_at || f.published_at || '—') + '</span></td>' +
-            '<td>' + (f.sources || []).map(s => s.uri
-                ? '<a href="' + esc(s.uri) + '" target="_blank" rel="noopener">' + esc(s.organization) + '</a>'
-                : esc(s.organization)).join('<br>') + '</td>' +
+            '<td>' + (f.sources || []).map(s => {
+                const org = s.uri
+                  ? '<a href="' + esc(s.uri) + '" target="_blank" rel="noopener">' + esc(s.organization) + '</a>'
+                  : esc(s.organization);
+                const tier = s.tier ? ' <span class="muted">(' + esc(s.tier) + ')</span>' : '';
+                const exc = s.excerpt ? '<br><span class="muted">' + esc(s.excerpt.slice(0, 160)) + '</span>' : '';
+                return org + tier + exc;
+              }).join('<br><br>') + '</td>' +
             '</tr>';
         });
         html += '</tbody></table>';
+        html += '<p class="muted" style="margin-top:8px">Legend: <strong>OBSERVED</strong> = image observation · ' +
+          '<strong>RETRIEVED</strong> = from a source · <strong>CURRENT</strong> = fresh live data (freshness "current") · ' +
+          '<strong>NOT ESTABLISHED</strong> = status unknown / no relevant report. Interpretation is never presented as source fact.</p>';
       }
       el.innerHTML = html;
     }

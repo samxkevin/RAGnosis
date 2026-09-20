@@ -100,7 +100,7 @@ def test_static_question_literature_only_no_health():
     r = agent.run(MultimodalRequest(question="what causes dengue?"))
     assert r.route == "literature"
     assert r.health is None
-    assert r.trace.tools_used == ["literature"]
+    assert r.trace.tools_used == ["literature", "generation"]
 
 
 def test_geographic_question_without_location_asks():
@@ -162,7 +162,7 @@ def test_combined_vision_literature_health(tmp_path: Path):
         MultimodalRequest(question="describe this rash and current outbreaks", image_path=str(img)),
         location_text="India",
     )
-    assert set(r.trace.tools_used) == {"vision", "literature", "health_intelligence"}
+    assert set(r.trace.tools_used) == {"vision", "literature", "health_intelligence", "generation"}
     assert r.modality == "multimodal"
     assert r.observations[0].label == "rash"
     kinds = {e.kind for e in r.evidence}

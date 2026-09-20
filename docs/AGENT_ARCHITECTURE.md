@@ -164,6 +164,35 @@ The agent fuses evidence while retaining provenance kinds (`Evidence.kind`):
 groups evidence by kind so the model keeps each source type distinct and preserves
 uncertainty.
 
+### Stable provenance ids and finding↔evidence linkage (Phase 4)
+
+Every fused `Evidence` object carries a deterministic, content-derived
+`evidence_id` (assigned by `schemas.assign_evidence_ids`). Every live-health
+`DiseaseFinding` carries a deterministic `finding_id` and the `evidence_ids`
+that back it, so the structured response links **finding → evidence → source**
+without the model having to invent provenance in prose. Ids are stable across
+runs (SHA-1 of content, never random) and survive JSON serialization. The
+generation prompt instructs the model to rely on this structured linkage and to
+label each statement as OBSERVED (image), RETRIEVED (from a source), CURRENT
+(fresh live data), or NOT ESTABLISHED.
+
+## Source ranking (explicit and inspectable)
+
+Findings for the same disease from multiple sources are merged with a documented
+precedence, applied in `HealthIntelligence._merge_contributions`:
+
+1. **Tier** — `primary_official` > `regional_official` > `secondary`.
+2. **Recency** — within a tier, the most recent `updated_at`/`published_at` leads.
+3. **Scope** — geographic relevance to the requested location is preserved per
+   source and never collapsed.
+
+The highest-precedence item becomes the *lead* whose status/risk is reported, but
+a newer secondary article can **never** silently override a directly relevant
+primary-official status: when known statuses differ, the finding status becomes
+`conflicting`, a `conflict_summary` preserves each source's organization, tier,
+scope, date, and exact wording, and all contributing sources are retained in
+`finding.sources`. This is exercised by the `source_quality` evaluation cases.
+
 ## Safety (population vs. individual)
 
 The deterministic safety layer (`multimodal/safety.py`) adds a
@@ -178,10 +207,75 @@ just what is logged.
 
 ## Execution trace (not chain-of-thought)
 
-Every agent response includes a structured `trace` (§17): `route`, `tools_used`,
-`router_reasons`, `retrieval_status`, `live_data_status`, `locations`,
-`last_checked`, and `safety_action`. This is declarative provenance only — it
-never exposes model chain-of-thought.
+Every agent response includes a structured `trace` (§17): `route`, `tools_used`
+(including `generation`), `router_reasons`, `retrieval_status`,
+`live_data_status`, `locations`, `last_checked`, and `safety_action`. Phase 4
+adds declarative execution metadata:
+
+* `sources` — per-source result map, e.g. `{"WHO Disease Outbreak News": "ok",
+  "CDC Newsroom": "failed"}` (`ok` / `cache` / `failed`).
+* `evidence_counts` — counts keyed by provenance kind, e.g.
+  `{"health_surveillance": 4, "pubmed_evidence": 3}`.
+* `used_current_data` — whether live data actually informed the answer.
+* `cache_hit` — whether any live result was served from the short-lived cache.
+* `conflicts_present` — whether contradictory evidence was found.
+
+This is declarative provenance only — it never exposes model chain-of-thought or
+hidden reasoning. Example:
+
+```json
+{
+  "route": "health_intelligence+literature",
+  "tools_used": ["literature", "health_intelligence", "generation"],
+  "location": "Telangana, India",
+  "sources": {"WHO Disease Outbreak News": "ok", "CDC Newsroom": "ok"},
+  "evidence_counts": {"health_surveillance": 4, "pubmed_evidence": 3},
+  "live_data_status": "partial",
+  "used_current_data": true,
+  "cache_hit": false,
+  "conflicts_present": false,
+  "safety_action": "pass"
+}
+```
+
+## Query-aware retrieval (deterministic, no second LLM)
+
+`HealthIntelligence.gather(locations, query=...)` builds a `QueryContext`
+(`build_query_context`) from the user's question and resolved locations. It
+splits query tokens into **disease terms** (present in the transparent lexicon),
+**keyword terms**, and **location terms** (from the resolved hierarchy — never
+inferred). Each finding is scored deterministically (disease match 4 > keyword 2
+> location 1); the score sets `matched_query`/`query_score`/`query_relevance_reason`
+and drives ordering. This never changes *what* a finding says or *whether* it is
+reported — only its priority. There is no second LLM and no web search: if the
+configured sources only support feeds, that is documented honestly rather than
+pretending arbitrary search exists. The layer still distinguishes **no relevant
+finding** (`no_relevant_current_data`) from **source unavailable**
+(`unavailable`) from **source has unrelated content** (findings exist but did not
+match the query).
+
+## Offline evaluation framework (`evaluation/`)
+
+A separate `evaluation/` package (kept out of the runtime `multimodal` package)
+provides a deterministic, offline benchmark:
+
+* `evaluation/cases.py` — an adversarial `BENCHMARK` covering routing, geography,
+  status/transmission/alert semantics, source quality (precedence, conflict,
+  freshness, availability), disease discovery, safety, and citation grounding.
+* `evaluation/evaluators.py` — per-kind evaluators returning `PASS` / `FAIL` /
+  `NOT_APPLICABLE` / `UNVERIFIED` (an unexpected error is `UNVERIFIED`, never a
+  silent pass).
+* `evaluation/runner.py` + `evaluation/run_evaluation.py` — run everything and
+  print totals, per-category results, key metric accuracies, and any failures.
+
+Run it with:
+
+```bash
+python evaluation/run_evaluation.py
+```
+
+It needs no API keys and makes no network calls. The benchmark is also asserted
+by `tests/test_evaluation.py` so a regression fails the normal offline suite.
 
 ## API
 
@@ -208,10 +302,13 @@ live-intelligence result), `limitations`, `warnings`, `retrieval_status`,
 `live_data_status`, `last_checked`, and `safety_action`.
 
 The browser demo at `GET /` (`multimodal/demo.html`) exposes question + optional
-image + optional location, and renders the route, tools, disease-finding table
-(status, transmission, relevance, risk, alert, freshness, sources), scope,
+image + optional location, and renders the route, tools, per-source status map,
+evidence-counts-by-type, current-data/cache/conflict flags, the disease-finding
+table (status, transmission, affected areas, relevance, risk, alert, freshness,
+sources with tier and excerpt, query-match indicator, finding id), scope,
 `Last checked` timestamp, observations, grouped evidence, safety status, and
-limitations.
+limitations. A legend labels what was OBSERVED / RETRIEVED / CURRENT / NOT
+ESTABLISHED so model interpretation is never shown as source fact.
 
 ## Configuration reference (live health)
 

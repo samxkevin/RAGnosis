@@ -119,6 +119,13 @@ class DiseaseFinding:
     requested_location: str  # original user text this finding was evaluated for
     normalized_location: str | None = None
 
+    # Stable provenance linkage (Phase-4 §10/§15). ``finding_id`` is a
+    # deterministic id for this finding; ``evidence_ids`` are the fused-evidence
+    # ids that back it so the structured answer can link finding -> evidence ->
+    # source without the model inventing provenance in prose.
+    finding_id: str = ""
+    evidence_ids: list[str] = field(default_factory=list)
+
     # Transmission (§7) — only set from an authoritative statement.
     transmissible: bool | None = None
     transmission_class: TransmissionClass = "unknown"
@@ -158,6 +165,15 @@ class DiseaseFinding:
 
     # Conflicts (§10).
     conflict_summary: str | None = None
+
+    # Query-awareness (Phase-4 §2). ``matched_query`` is True when this finding
+    # matched the user's deterministic query terms (disease/location/keywords);
+    # ``query_score`` is the graded relevance (disease > keyword > location);
+    # ``query_relevance_reason`` records why. Purely presentational — it never
+    # changes what the finding says, only how it is prioritised/annotated.
+    matched_query: bool = False
+    query_score: int = 0
+    query_relevance_reason: str | None = None
 
     # Provenance (§4, §12).
     sources: list[SourceRef] = field(default_factory=list)
