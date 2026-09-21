@@ -27,6 +27,14 @@ Usage:
 
 Exit code: 0 when no check is in an error state (MOCK/LIVE/UNVERIFIED are all
 acceptable outcomes for an optional smoke); 1 if a check errored unexpectedly.
+
+Pass ``--require-live`` (only meaningful together with ``--live``) to make the
+suite a hard gate on real connectivity: it exits non-zero if ANY check that was
+attempted live finished UNVERIFIED (could not reach the real dependency). This
+NEVER fabricates a LIVE result — it only turns an honest UNVERIFIED into a
+failing exit code so a release gate cannot silently pass without a real
+dependency having been contacted. UNVERIFIED is never printed or described as a
+success.
 """
 
 from __future__ import annotations
@@ -165,7 +173,15 @@ def main(argv: list[str] | None = None) -> int:
                              "Without them the affected check is UNVERIFIED, not faked.")
     parser.add_argument("--location", default=None,
                         help="Explicit location for the health/agent checks.")
+    parser.add_argument("--require-live", action="store_true",
+                        help="Exit non-zero if any live-attempted check is "
+                             "UNVERIFIED (could not reach the real dependency). "
+                             "Implies --live. Never fabricates a LIVE result.")
     args = parser.parse_args(argv)
+
+    if args.require_live:
+        # --require-live only makes sense against real dependencies.
+        args.live = True
 
     mode = "LIVE (real dependencies attempted)" if args.live else "OFFLINE (fakes)"
     print("RAGnosis compact smoke suite")
@@ -180,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     ]
 
     any_error = False
+    unverified: list[str] = []
     for label, fn in checks:
         try:
             state, detail = fn()
@@ -187,13 +204,26 @@ def main(argv: list[str] | None = None) -> int:
             state, detail = ERROR, f"{type(exc).__name__}: {exc}"
         if state == ERROR:
             any_error = True
+        if state == UNVERIFIED:
+            unverified.append(label)
         print(f"[{state:<14}] {label}")
         print(f"                 {detail}")
 
     print("-" * 72)
     print("States: LIVE VERIFIED = real dependency reached; MOCK VERIFIED = "
           "wiring proven with fakes; UNVERIFIED = could not decide (nothing faked).")
-    return 1 if any_error else 0
+
+    if args.require_live and unverified:
+        print("-" * 72)
+        print("--require-live FAILED: the following live-attempted check(s) "
+              "could not reach a real dependency and remain UNVERIFIED "
+              "(NOT a success):")
+        for label in unverified:
+            print(f"  * {label}")
+        return 2
+    if any_error:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

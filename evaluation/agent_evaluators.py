@@ -295,15 +295,21 @@ def eval_grounding(response: AgentResponse, exp: dict[str, Any]):
       2. fabricated citations (PMIDs not present in the fused evidence);
       3. fabricated dates (years absent from the fixtures' timestamps);
       4. absence stated as fact when live data was unavailable / no-relevant;
-      5. active-spread / outbreak certainty with no active finding to support it;
-      6. unsupported transmission (contagious/person-to-person) claims;
+      5. DISEASE-SPECIFIC active-spread / outbreak certainty: an active finding
+         for disease A never justifies a spreading claim for disease B;
+      6. DISEASE-SPECIFIC unsupported transmission (contagious/person-to-person)
+         claims: a transmissible finding for disease A never validates a
+         transmission claim about disease B;
       7. unsupported local-presence claims for imported-only findings;
       8. conversion of uncertainty into certainty when findings are hedged.
 
     ``exp['grounding']`` is ``'pass'`` (answer must be faithful) or ``'fail'``
     (a deliberately unfaithful answer the detector MUST catch — a self-test).
-    Its LIMITATION is explicit: paraphrase and semantic entailment are NOT
-    verified; only token/structure-level fixture fidelity is.
+    Its LIMITATION is explicit and deliberate: this checks FIXTURE FIDELITY, not
+    semantic truth. Only token/structure-level agreement with the supplied
+    fixtures is verified; paraphrase and semantic entailment are NOT. A perfect
+    grounding pass rate means the answer did not contradict the fixtures on the
+    tracked axes, nothing about real-world factual accuracy.
     """
     mode = exp.get("grounding")
     if mode is None:
@@ -353,26 +359,50 @@ def eval_grounding(response: AgentResponse, exp: dict[str, Any]):
                     f"absence stated as fact under {response.live_data_status}: {p!r}"
                 )
 
-    # --- 5. Outbreak / active-spread certainty with no active finding. -------
+    # --- 5. Outbreak / active-spread certainty. -----------------------------
+    # (a) Generic outbreak certainty ("there is an outbreak") with NO active
+    #     finding anywhere in the response.
     active = _has_active_finding(response)
     if not active:
         for p in _CERTAINTY_OUTBREAK:
             if p in answer:
                 problems.append(f"asserts outbreak with no active finding: {p!r}")
-        # Active-spread language per disease when that disease has no active finding.
-        for sent in _sentences(answer):
-            if any(cue in sent for cue in _ACTIVE_CLAIM_CUES) and \
-                    not any(h in sent for h in _HEDGE_CUES):
-                for mention in _answer_disease_mentions(sent):
-                    if not _disease_has_active_finding(response, mention):
-                        problems.append(
-                            f"asserts active spread of {mention!r} with no active finding"
-                        )
+    # (b) DISEASE-SPECIFIC active-spread language. This runs regardless of
+    #     whether some OTHER disease is active: an active finding for disease A
+    #     must never justify a spreading claim for disease B. Checked per
+    #     sentence so a hedge in one sentence does not excuse a bare claim in
+    #     another.
+    for sent in _sentences(answer):
+        if any(cue in sent for cue in _ACTIVE_CLAIM_CUES) and \
+                not any(h in sent for h in _HEDGE_CUES):
+            for mention in _answer_disease_mentions(sent):
+                if not _disease_has_active_finding(response, mention):
+                    problems.append(
+                        f"asserts active spread of {mention!r} with no active "
+                        f"finding for that disease"
+                    )
 
     # --- 6. Unsupported transmission (contagious / person-to-person). --------
-    if any(cue in answer for cue in _TRANSMISSION_CLAIM_CUES):
-        if not _any_finding_transmissible(response):
-            problems.append("asserts transmissibility not established by any finding")
+    # DISEASE-SPECIFIC: a transmission claim in a sentence mentioning disease X
+    # must be backed by a transmissible finding FOR X, not merely any
+    # transmissible finding in the response.
+    for sent in _sentences(answer):
+        if any(cue in sent for cue in _TRANSMISSION_CLAIM_CUES):
+            mentions = _answer_disease_mentions(sent)
+            if mentions:
+                for mention in mentions:
+                    if not _disease_is_transmissible(response, mention):
+                        problems.append(
+                            f"asserts transmissibility of {mention!r} not "
+                            f"established by a finding for that disease"
+                        )
+            else:
+                # A transmission claim with no disease named in the sentence:
+                # fall back to requiring SOME transmissible finding.
+                if not _any_finding_transmissible(response):
+                    problems.append(
+                        "asserts transmissibility not established by any finding"
+                    )
 
     # --- 7. Unsupported local presence for imported-only findings. -----------
     for sent in _sentences(answer):
@@ -435,16 +465,33 @@ def _disease_is_imported_only(response: AgentResponse, mention: str) -> bool:
     )
 
 
+_TRANSMISSIBLE_CLASSES = (
+    "person_to_person", "human_to_human", "airborne", "respiratory", "contact",
+)
+
+
+def _finding_is_transmissible(f: dict) -> bool:
+    if f.get("transmissible") is True:
+        return True
+    return f.get("transmission_class") in _TRANSMISSIBLE_CLASSES
+
+
 def _any_finding_transmissible(response: AgentResponse) -> bool:
     if not response.health:
         return False
-    for f in response.health.get("findings", []):
-        if f.get("transmissible") is True:
-            return True
-        if f.get("transmission_class") in ("person_to_person", "human_to_human",
-                                           "airborne", "respiratory", "contact"):
-            return True
-    return False
+    return any(
+        _finding_is_transmissible(f)
+        for f in response.health.get("findings", [])
+    )
+
+
+def _disease_is_transmissible(response: AgentResponse, mention: str) -> bool:
+    """True when a finding matching ``mention`` is transmissible.
+
+    Per-disease: a transmissible finding for disease A must NOT validate a
+    transmission claim about disease B (fixture-fidelity, not general truth)."""
+    fs = _findings_for_mention(response, mention)
+    return any(_finding_is_transmissible(f) for f in fs)
 
 
 def _findings_are_hedged(response: AgentResponse) -> bool:

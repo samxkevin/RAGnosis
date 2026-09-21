@@ -163,8 +163,15 @@ def test_final_report_builds_and_is_consistent():
     rep = build_report()
     # Structure present.
     for key in ("component_benchmark", "end_to_end_benchmark", "dimensions",
-                "live_model_contract_validation", "live_health_validation"):
+                "live_model_contract_validation", "live_health_validation",
+                "verification_scope"):
         assert key in rep, key
+    # The three verification layers must be separated explicitly (§4).
+    assert set(rep["verification_scope"]) == {
+        "offline_contract_verification",
+        "live_dependency_verification",
+        "semantic_truth_limitation",
+    }
     # Every metric has numerator/denominator/status.
     for d, m in rep["dimensions"].items():
         assert set(m) == {"numerator", "denominator", "status"}, d
@@ -179,11 +186,17 @@ def test_final_report_builds_and_is_consistent():
     # Markdown renders without error and frames results as a contract pass rate.
     md = format_markdown(rep).lower()
     assert "contract pass rate" in md
-    # The only place accuracy terms may appear is the negated disclaimer
-    # ("NOT LLM/medical/diagnostic accuracy"); they must never be asserted.
-    assert "not llm/medical/diagnostic accuracy" in md
+    # The three verification layers must be rendered.
+    assert "offline contract verification" in md
+    assert "live dependency verification" in md
+    assert "semantic-truth limitation" in md
+    # Accuracy / real-world-surveillance terms may appear ONLY as negated
+    # disclaimers; they must never be asserted as a property of the system.
     import re as _re
-    for forbidden in ("llm accuracy", "medical accuracy", "diagnostic accuracy"):
+    for forbidden in ("factual accuracy", "medical accuracy",
+                      "diagnostic accuracy", "diagnostic",
+                      "real-time", "exhaustive"):
         for m in _re.finditer(_re.escape(forbidden), md):
-            window = md[max(0, m.start() - 30):m.start()]
-            assert "not " in window, f"{forbidden!r} asserted without negation"
+            window = md[max(0, m.start() - 120):m.start()]
+            assert "not " in window or "never" in window, (
+                f"{forbidden!r} appears without negation")

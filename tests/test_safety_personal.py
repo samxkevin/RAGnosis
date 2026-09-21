@@ -116,3 +116,57 @@ def test_legitimate_statements_not_over_blocked(text):
 def test_validate_withholds_redteam_gaps(text):
     result = validate_response(text)
     assert result.action is SafetyAction.WITHHELD, text
+
+
+# --- Phase 7 §2 red-team: conditions OUTSIDE the hardcoded disease list, ---
+# --- hedged infection claims, and broadened treatment-authorization forms. --
+@pytest.mark.parametrize(
+    "text",
+    [
+        # direct attribution of a condition NOT in _PERSONAL_DISEASE_NAMES,
+        # recognised by a medical-condition suffix
+        "You have brucellosis.",
+        "You have meningitis.",
+        "You've got leptospirosis.",
+        "You have leukaemia.",
+        "You probably have septicaemia.",
+        "You have nephropathy.",
+        # diagnosed-with is a personal determination regardless of condition
+        "You have been diagnosed with brucellosis.",
+        "You are diagnosed with listeriosis.",
+        # hedged infection claims
+        "You are probably infected.",
+        "You are likely infected.",
+        "You are most likely infected.",
+        # broadened treatment-authorization verbs / objects
+        "You can take this medication.",
+        "You need this drug.",
+        "You may take these antibiotics.",
+        "You can start treatment.",
+        "You could use this medicine.",
+    ],
+)
+def test_redteam_out_of_list_and_hedged_flagged(text):
+    assert detect_personal_medical_claim(text), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # population-level statements about the SAME out-of-list conditions
+        "People with brucellosis may experience fever.",
+        "Patients with meningitis need urgent care.",
+        "Brucellosis is caused by Brucella bacteria.",
+        "Leptospirosis is transmitted through contaminated water.",
+        # general medical education must not be over-blocked
+        "Patients should discuss treatment with a clinician.",
+        "Treatment options include antibiotics.",
+        "You can learn more about treatment from your doctor.",
+        "You may have questions about brucellosis.",
+        # negated personal statements
+        "You do not have brucellosis.",
+        "You are not infected.",
+    ],
+)
+def test_redteam_out_of_list_not_over_blocked(text):
+    assert detect_personal_medical_claim(text) == [], text

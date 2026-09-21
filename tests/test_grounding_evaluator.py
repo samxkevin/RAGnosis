@@ -175,7 +175,7 @@ def test_unsupported_transmission_claim_flagged():
         _response("Dengue is contagious person-to-person.",
                   findings=[_finding("dengue", status="endemic",
                                      transmissible=False, transmission_class="vector")]),
-        "transmissibility not established",
+        "transmissibility of 'dengue' not established",
     )
 
 
@@ -208,3 +208,119 @@ def test_fail_mode_passes_when_problem_detected():
     r = _response("A measles outbreak is spreading.", findings=[_finding("dengue")])
     out, detail = eval_grounding(r, {"grounding": "fail"})
     assert out is Outcome.PASS, detail
+
+
+# --- Phase-7: disease-SPECIFIC active-spread & transmission validation -------
+# An active/transmissible finding for disease A must never justify a claim about
+# disease B. These are the two release-candidate hardening fixes.
+
+def test_cross_disease_active_spread_flagged():
+    # dengue is an active outbreak, but the answer claims MEASLES is spreading.
+    _fails(
+        _response(
+            "Measles is currently spreading rapidly in the area.",
+            findings=[_finding("dengue", status="outbreak"),
+                      _finding("measles", status="endemic")],
+        ),
+        "active spread of 'measles' with no active finding for that disease",
+    )
+
+
+def test_cross_disease_active_spread_does_not_hide_behind_other_active():
+    # Sanity: the presence of ANY active finding used to short-circuit the
+    # per-disease check. Ensure the false claim is still caught.
+    out, detail = eval_grounding(
+        _response(
+            "Cholera is spreading. Dengue is spreading.",
+            findings=[_finding("dengue", status="outbreak"),
+                      _finding("cholera", status="endemic")],
+        ),
+        {"grounding": "pass"},
+    )
+    assert out is Outcome.FAIL
+    assert "cholera" in detail
+    # the true dengue claim must NOT be flagged
+    assert "active spread of 'dengue'" not in detail
+
+
+def test_same_disease_active_spread_passes():
+    r = _response(
+        "Measles is currently spreading rapidly in the area.",
+        findings=[_finding("measles", status="outbreak")],
+    )
+    out, detail = eval_grounding(r, {"grounding": "pass"})
+    assert out is Outcome.PASS, detail
+
+
+def test_cross_disease_transmission_flagged():
+    # measles is transmissible, but the answer claims DENGUE is contagious.
+    _fails(
+        _response(
+            "Dengue is contagious person-to-person.",
+            findings=[_finding("measles", status="outbreak",
+                               transmissible=True, transmission_class="airborne"),
+                      _finding("dengue", status="endemic",
+                               transmissible=False, transmission_class="vector")],
+        ),
+        "transmissibility of 'dengue' not established by a finding for that disease",
+    )
+
+
+def test_same_disease_transmission_passes():
+    r = _response(
+        "Measles is contagious person-to-person.",
+        findings=[_finding("measles", status="outbreak",
+                           transmissible=True, transmission_class="airborne")],
+    )
+    out, detail = eval_grounding(r, {"grounding": "pass"})
+    assert out is Outcome.PASS, detail
+
+
+def test_transmission_claim_without_named_disease_falls_back():
+    # No disease named in the sentence -> require SOME transmissible finding.
+    _fails(
+        _response(
+            "This is contagious person-to-person.",
+            findings=[_finding("dengue", status="outbreak",
+                               transmissible=False, transmission_class="vector")],
+        ),
+        "transmissibility not established by any finding",
+    )
+
+
+# --- Phase-7: no false passes from uncertainty / imported / conflict / multi -
+def test_imported_only_active_spread_flagged():
+    _fails(
+        _response(
+            "Mpox is currently spreading locally with a local outbreak here.",
+            findings=[_finding("mpox", status="outbreak", relevance="imported_risk")],
+        ),
+        "imported-only",
+    )
+
+
+def test_conflicting_claimed_as_confirmed_flagged():
+    _fails(
+        _response(
+            "There is a confirmed outbreak of cholera.",
+            findings=[_finding("cholera", status="conflicting",
+                               conflict_summary="sources disagree")],
+        ),
+        "confirmed outbreak",
+    )
+
+
+def test_multi_disease_mixed_truth_flags_only_false_claim():
+    out, detail = eval_grounding(
+        _response(
+            "Dengue is contagious person-to-person. Cholera is spreading rapidly.",
+            findings=[_finding("dengue", status="outbreak",
+                               transmissible=True, transmission_class="person_to_person"),
+                      _finding("cholera", status="endemic")],
+        ),
+        {"grounding": "pass"},
+    )
+    assert out is Outcome.FAIL
+    # cholera spread claim flagged; dengue transmission claim NOT flagged
+    assert "cholera" in detail
+    assert "transmissibility of 'dengue'" not in detail

@@ -68,9 +68,33 @@ def build_report() -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "kind": "end_to_end_contract_pass_rate",
         "disclaimer": (
-            "Contract pass rate over deterministic fixtures. NOT LLM/medical/"
-            "diagnostic accuracy."
+            "Contract pass rate over deterministic fixtures. This measures "
+            "whether the system honours its declared behavioural contracts "
+            "(routing, grounding, provenance, uncertainty, safety, geographic "
+            "honesty). It is NOT a measure of LLM factual accuracy, medical or "
+            "diagnostic accuracy, and NOT evidence of real-time or exhaustive "
+            "real-world disease surveillance. Absence of a finding is never "
+            "proof of absence of disease."
         ),
+        "verification_scope": {
+            "offline_contract_verification": (
+                "Deterministic component and end-to-end benchmarks run against "
+                "injected fakes (no network, no credentials). Proves the code "
+                "honours its contracts; every metric below is of this kind."
+            ),
+            "live_dependency_verification": (
+                "Whether real external dependencies (the generation model, live "
+                "health feeds) were actually contacted. Reported separately as "
+                "LIVE VERIFIED / UNVERIFIED and never inferred from offline "
+                "results. UNVERIFIED is not a success."
+            ),
+            "semantic_truth_limitation": (
+                "No metric here evaluates whether an answer is factually or "
+                "medically correct, nor whether current outbreak status in the "
+                "real world matches any claim. Grounding checks verify fidelity "
+                "to the provided fixtures/evidence only, not truth in the world."
+            ),
+        },
         "component_benchmark": {
             "total": comp.total, "passed": comp.passed, "failed": comp.failed,
             "unverified": comp.unverified, "ok": comp.ok,
@@ -109,6 +133,13 @@ def format_markdown(rep: dict) -> str:
     L.append(f"_Generated: {rep['generated_at']}_")
     L.append("")
     L.append(f"> {rep['disclaimer']}")
+    L.append("")
+    scope = rep["verification_scope"]
+    L.append("## What this report does and does not verify")
+    L.append("")
+    L.append(f"- **Offline contract verification** — {scope['offline_contract_verification']}")
+    L.append(f"- **Live dependency verification** — {scope['live_dependency_verification']}")
+    L.append(f"- **Semantic-truth limitation** — {scope['semantic_truth_limitation']}")
     L.append("")
     c = rep["component_benchmark"]
     e = rep["end_to_end_benchmark"]

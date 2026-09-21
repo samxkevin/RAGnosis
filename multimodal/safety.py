@@ -167,7 +167,12 @@ _PERSONAL_MEDICAL_PATTERNS = (
     # "you have/are infected/have caught ..."
     r"\byou\s+(?:have|are|might have|probably have|likely have|may have)\s+"
     r"(?:been\s+)?(?:infected|contracted|caught|got|developed)\b",
-    r"\byou\s+(?:are|'re)\s+(?:infected|contagious|sick with|ill with)\b",
+    r"\byou\s+(?:are|'re)\s+(?:probably\s+|likely\s+|definitely\s+|certainly\s+"
+    r"|clearly\s+|most likely\s+)?(?:infected|contagious|sick with|ill with)\b",
+    # "you are/'ve been diagnosed with <anything>" is a personal determination
+    # regardless of the condition named (covers conditions outside the disease
+    # list, e.g. brucellosis).
+    r"\byou\s+(?:are|'ve been|have been|were|'re)\s+diagnosed\s+with\s+\w+",
     r"\byou\s+(?:probably\s+|likely\s+|definitely\s+|certainly\s+|clearly\s+"
     r"|most likely\s+)?(?:have|'ve got)\s+(?:the\s+|a\s+|an\s+)?"
     r"(?:disease|infection|virus|illness)\b",
@@ -189,6 +194,15 @@ _PERSONAL_MEDICAL_PATTERNS = (
     r"diagnosed\s+with\s+)?"
     r"(?:probably\s+|likely\s+)?(?:a\s+case\s+of\s+|an?\s+|the\s+)?"
     r"(?:" + "|".join(re.escape(_d) for _d in _PERSONAL_DISEASE_NAMES) + r")\b",
+    # Direct attribution of a condition OUTSIDE the disease list, recognised by a
+    # medical-condition suffix (e.g. brucellosis, meningitis, leukaemia,
+    # septicaemia, nephropathy, carcinoma). "you have <word><medical-suffix>".
+    # This keeps population statements safe because it requires "you have/'ve
+    # got" directed at the user, and a leading negation is excluded downstream.
+    r"\byou\s+(?:probably\s+|likely\s+|definitely\s+|certainly\s+|clearly\s+"
+    r"|most likely\s+)?(?:have|'ve\s+got|have\s+got)\s+"
+    r"(?:probably\s+|likely\s+)?(?:a\s+case\s+of\s+|an?\s+|the\s+)?"
+    r"\w*(?:osis|itis|aemia|emia|opathy|pathy|oma|iasis|coccus|ococci)\b",
     # predicting the user will get infected. An optional adverb
     # (probably/likely/definitely/certainly/soon) may sit between "will" and the
     # verb, and "become infected" is included alongside get/catch/contract.
@@ -204,15 +218,22 @@ _PERSONAL_MEDICAL_PATTERNS = (
     # caught, not only named drugs. General wellbeing advice ("you should
     # consult a doctor", "you should get vaccinated", "you should rest") is NOT
     # matched because it does not name a medication/drug/treatment object.
-    r"\byou\s+should\s+(?:take|start|begin|use|be prescribed)\s+"
+    r"\byou\s+(?:should|can|may|could|must|need to|have to|ought to|"
+    r"will\s+need to)\s+(?:take|start|begin|use|be prescribed|"
+    r"be given|get on)\s+"
     r"(?:this|that|the|these|those|a|an|some\s+)?\s*"
     r"(?:antibiotics?|antivirals?|medications?|medicines?|drugs?|treatments?|"
-    r"pills?|doses?|prescriptions?|"
+    r"pills?|doses?|prescriptions?|therapy|"
     r"amoxicillin|azithromycin|doxycycline|oseltamivir|tamiflu)\b",
-    r"\byou\s+(?:need to|must)\s+(?:take|start|use)\s+"
-    r"(?:this|that|the|these|those|a|an|some\s+)?\s*"
+    # Object stated directly without an explicit "take/use" verb:
+    # "you need this drug", "you require these medications".
+    r"\byou\s+(?:should|can|may|could|must|need|require|will\s+need)\s+"
+    r"(?:this|that|the|these|those|a|an|some\s+)\s*"
     r"(?:antibiotics?|antivirals?|medications?|medicines?|drugs?|treatments?|"
-    r"pills?|doses?|prescriptions?)\b",
+    r"pills?|doses?|prescriptions?|therapy)\b",
+    # "you can start/need treatment" — bare treatment noun without a determiner.
+    r"\byou\s+(?:should|can|may|could|must|need to|have to)\s+"
+    r"(?:take|start|begin|get|receive)\s+treatment\b",
     r"\bi\s+(?:diagnose|prescribe)\s+you\b",
     # individualized infection risk stated as fact
     r"\byour\s+(?:personal\s+)?(?:risk of infection|infection risk)\s+is\s+"
