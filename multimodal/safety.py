@@ -165,6 +165,9 @@ _PERSONAL_DISEASE_NAMES = (
 _PERSONAL_CONDITION_NAMES = (
     "diabetes", "asthma", "epilepsy", "hypertension", "anaemia", "anemia",
     "arthritis", "hiv", "aids", "covid", "covid-19", "influenza", "the flu",
+    # "coma" is a genuine medical condition; it is too short for the suffix
+    # detector's minimum-stem rule, so it is listed explicitly here.
+    "coma",
 )
 
 # Ordinary English / proper-noun words that end in a medical-looking suffix but
@@ -172,7 +175,7 @@ _PERSONAL_CONDITION_NAMES = (
 # it does not flag sentences like "You have a diploma." A short, curated list is
 # used deliberately: the detector stays conservative rather than guessing.
 _NON_MEDICAL_SUFFIX_WORDS = (
-    "diploma", "aroma", "coma", "sympathy", "empathy", "apathy", "antipathy",
+    "diploma", "aroma", "sympathy", "empathy", "apathy", "antipathy",
     "telepathy", "homeopathy", "osteopathy", "naturopathy", "allopathy",
     "oklahoma", "sonoma", "tacoma", "paloma", "roma", "gnosis", "prognosis",
     "diagnosis",
@@ -223,6 +226,10 @@ _PERSONAL_MEDICAL_PATTERNS = (
     r"|most likely\s+)?(?:have|have got)|'ve\s+got)\s+"
     r"(?:probably\s+|likely\s+)?(?:a\s+case\s+of\s+|an?\s+|the\s+)?"
     r"(?:" + "|".join(re.escape(_c) for _c in _PERSONAL_CONDITION_NAMES) + r")\b",
+    # "you are in a coma" — state-of-being attribution of a condition to the user
+    # (the "you have <condition>" pattern above does not cover "are in a ...").
+    r"\byou\s+(?:are|'re|are\s+(?:probably|likely|definitely)|"
+    r"were|have\s+been)\s+in\s+(?:a\s+|an\s+|the\s+)?coma\b",
     # predicting the user will get infected. An optional adverb
     # (probably/likely/definitely/certainly/soon) may sit between "will" and the
     # verb, and "become infected" is included alongside get/catch/contract.
@@ -329,8 +336,24 @@ def _known_pmids(evidence: list[Evidence]) -> set[str]:
 
 
 def _is_negated(text_lower: str, start: int) -> bool:
-    """Return True if a negation cue appears in the window preceding ``start``."""
-    window = text_lower[max(0, start - _NEGATION_WINDOW):start]
+    """Return True if a negation cue applies to the phrase beginning at ``start``.
+
+    The scan is sentence/clause-local: it only looks back to the start of the
+    current sentence (the most recent ``.``/``!``/``?`` before ``start``), so a
+    negation in a *previous* sentence cannot suppress a positive determination in
+    this one. For example, in "You do not have diabetes. You have brucellosis."
+    the second clause is NOT considered negated. A fixed character cap is still
+    applied as an upper bound within very long sentences. Commas are intentionally
+    not treated as boundaries so "consistent with, but do not confirm, malignancy"
+    remains correctly suppressed.
+    """
+    boundary = 0
+    for terminator in (".", "!", "?"):
+        idx = text_lower.rfind(terminator, 0, start)
+        if idx + 1 > boundary:
+            boundary = idx + 1
+    window_start = max(boundary, start - _NEGATION_WINDOW)
+    window = text_lower[window_start:start]
     return any(cue in window for cue in _NEGATION_CUES)
 
 

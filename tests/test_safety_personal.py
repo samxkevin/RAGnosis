@@ -178,17 +178,61 @@ def test_redteam_out_of_list_not_over_blocked(text):
     "text",
     [
         # ordinary / proper-noun words ending in a medical-looking suffix must
-        # NOT be treated as conditions (conservative suffix detection)
+        # NOT be treated as conditions (conservative suffix detection).
+        # NOTE: "coma" is deliberately absent here — it is a genuine medical
+        # condition and is covered by test_coma_is_a_personal_determination.
         "You have a diploma.",
         "You have an aroma.",
         "You have empathy.",
         "You have sympathy.",
-        "You have a coma.",
-        "You are in a coma.",
         "You have a persona.",
     ],
 )
 def test_suffix_false_positives_not_flagged(text):
+    assert detect_personal_medical_claim(text) == [], text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # a coma is a genuine medical condition; direct attribution to the user
+        # must be withheld (correction pass — previously mis-listed as a FP).
+        "You have a coma.",
+        "You are in a coma.",
+        "You probably have a coma.",
+    ],
+)
+def test_coma_is_a_personal_determination(text):
+    assert detect_personal_medical_claim(text), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # negation must be sentence/clause-local: a negation in a PRIOR sentence
+        # must NOT suppress a genuine determination in the following sentence.
+        "You do not have diabetes. You have brucellosis.",
+        "This image cannot confirm cancer. You have diabetes.",
+        "You are not infected. You have hypertension.",
+    ],
+)
+def test_prior_sentence_negation_does_not_suppress(text):
+    assert detect_personal_medical_claim(text), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # genuinely negated claims within the same clause remain suppressed
+        "You do not have diabetes.",
+        "You do not have brucellosis.",
+        "You are not infected.",
+        "This image cannot confirm cancer.",
+        # comma-joined negation in the same sentence stays suppressed too
+        "You are consistent with, but do not have, diabetes.",
+    ],
+)
+def test_local_negation_still_suppresses(text):
     assert detect_personal_medical_claim(text) == [], text
 
 
