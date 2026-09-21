@@ -137,9 +137,82 @@ It holds Colab RAG notebooks, graph enrichment and reconstruction exports, and m
 
 `scripts/` is also outside the web entry point. `EmbeddingsIngestion.py` reads `NEO4J_*` from the environment and CSVs from `Database/EnrichmentReport` (or `ENRICHMENT_DIR`). It is a maintenance utility, not a request handler.
 
+## Multimodal track
+
+The `multimodal/` package extends RAGnosis with an evidence-grounded image + question
+workflow: image validation and fingerprinting, a provider-agnostic vision model,
+PubMed evidence retrieval, Cohere grounded generation, and a deterministic safety
+layer that **enforces** the informational boundary — it withholds answers containing
+definitive-diagnosis language and redacts citations not present in the retrieved
+evidence (a conservative heuristic layer, not a guarantee of medical safety). It runs
+as a separate API (`multimodal_api.py`, default port `8001`) with a built-in browser
+demo, and is documented in [`docs/MULTIMODAL_ARCHITECTURE.md`](docs/MULTIMODAL_ARCHITECTURE.md).
+
+```bash
+# 1. configure providers (see docs for all variables)
+export OPENAI_API_KEY=...   # vision
+export COHERE_API_KEY=...    # generation
+# 2. start the API
+python multimodal_api.py
+# 3a. open the built-in demo UI in a browser
+open http://localhost:8001/
+# 3b. or check health / call it directly
+curl http://localhost:8001/health
+curl -X POST http://localhost:8001/analyze \
+  -F "question=Describe the observable features a clinician should review" \
+  -F "image=@sample.png"
+```
+
+Without provider keys the API still starts; `/analyze` returns a clear `503 not
+configured` response. Responses carry a machine-readable `safety_action`
+(`pass` / `redacted` / `withheld`) alongside `warnings`, `observations`, and
+`evidence`.
+
+## Agent & live health intelligence
+
+The same service exposes a composed **agent** at `POST /agent` that adds a **live
+disease & health intelligence** capability. RAGnosis is an evidence grounded
+biomedical research agent that combines graph knowledge, biomedical literature,
+multimodal observations, and **current public health information** while explicitly
+preserving source provenance and uncertainty. It is **not** a diagnostic system.
+
+The agent composes the existing pipeline (it does not replace it): deterministic
+routing decides which tools to run, explicit user-supplied location scopes any
+regional lookup (location is **never** inferred from IP, browser, or account, and
+the agent asks first when a geographic question has no location), and live health
+intelligence fetches **current** information from authoritative surveillance feeds
+(WHO / CDC / ECDC by default; India MoHFW / NCDC / IDSP, PAHO, and Telangana can be
+added via `HEALTH_SOURCE_FEEDS`) at request time — model training knowledge is never
+presented as the current outbreak situation. Findings carry status (using the
+source's own term), transmission, geographic scope, relevance to the requested
+location, official risk if stated (never invented), freshness, alerts, conflicts,
+and full provenance with timestamps. See
+[`docs/AGENT_ARCHITECTURE.md`](docs/AGENT_ARCHITECTURE.md).
+
+```bash
+# text + live health, explicitly scoped to a location
+curl -X POST http://localhost:8001/agent \
+  -F "question=Is there a current cholera outbreak I should know about?" \
+  -F "location=Hyderabad, Telangana, India"
+```
+
+An optional live smoke test (the only network path, never in CI) is available:
+
+```bash
+python scripts/live_health_smoke.py --location "India"
+```
+
 ## Checks
 
-This repository does not include an automated test suite. After install, confirm:
+Automated tests cover the multimodal track and run fully offline (no API keys, no
+network) via injected collaborators:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+After install, also confirm the production web app manually:
 
 - `GET /` returns the chat page
 - `GET /health` returns HTTP 200 with `status: ok` even when Neo4j and Cohere are unset
