@@ -1241,7 +1241,17 @@ class HealthIntelligence:
         if status == "unknown" and not statuses:
             status_display = "no_current_outbreak_status_found"
 
-        freshness = _best_freshness(a["freshness"] for _, a in ordered)
+        # Freshness of the MERGED finding must stay aligned with the lead source
+        # whose status/dates are surfaced at the top level (published_at /
+        # updated_at / classification_date / classification_source below all come
+        # from ``lead_item``). Using the freshest contributor here would let an
+        # unrelated, more-recent source promote a stale lead to "current",
+        # contradicting the displayed source date (e.g. a 2026-04-23 WHO DON lead
+        # shown as "current" on 2026-09-21). Individual contributor freshness is
+        # preserved per-source via their published/updated timestamps in
+        # ``sources`` below; only the top-level state is lead-aligned. When the
+        # lead has no usable date this is ``unknown`` — never guessed as current.
+        freshness = lead["freshness"]
 
         # Deterministic finding id: disease + normalized location + the set of
         # backing source URIs/titles. Stable across runs; never random (§10/§15).

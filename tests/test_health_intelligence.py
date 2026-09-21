@@ -373,3 +373,194 @@ def test_provenance_retained():
     assert src.tier == "primary_official"
     assert src.uri == "https://who.int/don/cholera"
     assert src.published_at
+
+
+# --- merged-finding freshness alignment (freshness correctness fix) ---------
+# The merged finding's top-level freshness_state must stay aligned with the LEAD
+# source whose status/dates are surfaced, so an unrelated fresher contributor
+# cannot promote a stale lead to "current" (contradicting the displayed date).
+
+# Fixed clock matching the reported live incident date.
+_SEP21 = datetime(2026, 9, 21, tzinfo=timezone.utc)
+
+
+def _clock_sep21():
+    return _SEP21
+
+
+def test_april23_source_is_stale_under_14day_current_threshold():
+    # (a) The exact measles/WHO-DON example: a 2026-04-23 lead on 2026-09-21 is
+    # far outside both the 14-day current and 60-day recent windows -> stale.
+    assert (
+        compute_freshness(
+            "2026-04-23T00:00:00+00:00", "2026-04-23T00:00:00+00:00", _SEP21, 14, 60
+        )
+        == "stale"
+    )
+
+
+def test_merged_freshness_not_promoted_by_fresher_secondary():
+    # (b) Stale primary lead + a fresher secondary with the SAME status must not
+    # make the merged finding "current". The lead's date is what is displayed.
+    lead = _item(
+        organization="WHO Disease Outbreak News",
+        tier="primary_official",
+        title="Measles outbreak",
+        summary="2026-DON598",
+        stated_status="outbreak",
+        geo_scope="global",
+        published_at="2026-04-23T00:00:00+00:00",
+        updated_at="2026-04-23T00:00:00+00:00",
+        uri="https://who.int/don/598",
+    )
+    fresher = _item(
+        organization="Some News",
+        tier="secondary",
+        title="Measles outbreak continues",
+        summary="recent coverage",
+        stated_status="outbreak",
+        geo_scope="global",
+        published_at="2026-09-19T00:00:00+00:00",
+        updated_at="2026-09-19T00:00:00+00:00",
+        uri="https://news/measles",
+    )
+    hi = HealthIntelligence(
+        cfg(),
+        providers=[
+            FakeProvider("WHO Disease Outbreak News", "primary_official", [lead]),
+            FakeProvider("Some News", "secondary", [fresher]),
+        ],
+        clock=_clock_sep21,
+    )
+    f = [x for x in hi.gather(parse_locations("India")).findings
+         if x.disease_name == "measles"][0]
+    # Top-level state must be aligned with the (stale) lead and its date.
+    assert f.freshness_state == "stale"
+    assert f.classification_date == "2026-04-23T00:00:00+00:00"
+    assert f.classification_source == "WHO Disease Outbreak News"
+    # Provenance for BOTH contributors is preserved with their own timestamps.
+    by_org = {s.organization: s for s in f.sources}
+    assert by_org["WHO Disease Outbreak News"].updated_at == "2026-04-23T00:00:00+00:00"
+    assert by_org["Some News"].updated_at == "2026-09-19T00:00:00+00:00"
+    assert len(f.sources) == 2
+
+
+def test_merged_freshness_current_lead_with_stale_secondary():
+    # (c) Current primary lead + older contributor -> current is valid.
+    lead = _item(
+        organization="WHO",
+        tier="primary_official",
+        title="Cholera outbreak in India",
+        stated_status="outbreak",
+        geo_scope="national",
+        published_at="2026-09-18T00:00:00+00:00",
+        updated_at="2026-09-18T00:00:00+00:00",
+        uri="https://who.int/c1",
+    )
+    older = _item(
+        organization="Media",
+        tier="secondary",
+        title="Cholera outbreak in India",
+        stated_status="outbreak",
+        geo_scope="national",
+        published_at="2026-04-01T00:00:00+00:00",
+        updated_at="2026-04-01T00:00:00+00:00",
+        uri="https://media/c2",
+    )
+    hi = HealthIntelligence(
+        cfg(),
+        providers=[
+            FakeProvider("WHO", "primary_official", [lead]),
+            FakeProvider("Media", "secondary", [older]),
+        ],
+        clock=_clock_sep21,
+    )
+    f = [x for x in hi.gather(parse_locations("India")).findings
+         if x.disease_name == "cholera"][0]
+    assert f.freshness_state == "current"
+    assert f.classification_date == "2026-09-18T00:00:00+00:00"
+    # Older contributor timestamp still preserved.
+    by_org = {s.organization: s for s in f.sources}
+    assert by_org["Media"].updated_at == "2026-04-01T00:00:00+00:00"
+
+
+def test_merged_freshness_unknown_when_lead_has_no_date():
+    # (d) Lead has no usable date -> unknown; a dated contributor must not make
+    # the merged finding current (no guessing).
+    lead = _item(
+        organization="WHO",
+        tier="primary_official",
+        title="Dengue outbreak in India",
+        stated_status="outbreak",
+        geo_scope="national",
+        published_at=None,
+        updated_at=None,
+        uri="https://who.int/d1",
+    )
+    dated = _item(
+        organization="Media",
+        tier="secondary",
+        title="Dengue outbreak in India",
+        stated_status="outbreak",
+        geo_scope="national",
+        published_at="2026-09-19T00:00:00+00:00",
+        updated_at="2026-09-19T00:00:00+00:00",
+        uri="https://media/d2",
+    )
+    hi = HealthIntelligence(
+        cfg(),
+        providers=[
+            FakeProvider("WHO", "primary_official", [lead]),
+            FakeProvider("Media", "secondary", [dated]),
+        ],
+        clock=_clock_sep21,
+    )
+    f = [x for x in hi.gather(parse_locations("India")).findings
+         if x.disease_name == "dengue"][0]
+    assert f.freshness_state == "unknown"
+    assert f.classification_date is None
+
+
+def test_merged_freshness_conflict_preserves_lead_and_per_source_dates():
+    # (d/conflict) Conflicting status: top-level freshness reflects the lead's
+    # own date (not a manufactured "current"), and each involved source keeps its
+    # own published/updated timestamp in provenance and the conflict summary.
+    lead = _item(
+        organization="WHO",
+        tier="primary_official",
+        title="Cholera outbreak in India",
+        stated_status="outbreak",
+        geo_scope="national",
+        published_at="2026-04-23T00:00:00+00:00",
+        updated_at="2026-04-23T00:00:00+00:00",
+        uri="https://who.int/cc1",
+    )
+    disagree = _item(
+        organization="Media",
+        tier="secondary",
+        title="Officials say cholera outbreak ruled out in India",
+        stated_status="no_outbreak",
+        geo_scope="national",
+        published_at="2026-09-19T00:00:00+00:00",
+        updated_at="2026-09-19T00:00:00+00:00",
+        uri="https://media/cc2",
+    )
+    hi = HealthIntelligence(
+        cfg(),
+        providers=[
+            FakeProvider("WHO", "primary_official", [lead]),
+            FakeProvider("Media", "secondary", [disagree]),
+        ],
+        clock=_clock_sep21,
+    )
+    f = [x for x in hi.gather(parse_locations("India")).findings
+         if x.disease_name == "cholera"][0]
+    assert f.status == "conflicting"
+    # Lead-aligned freshness: the stale lead date is not promoted to current.
+    assert f.freshness_state == "stale"
+    assert f.classification_date == "2026-04-23T00:00:00+00:00"
+    assert f.conflict_summary is not None
+    # Both source dates are preserved in provenance.
+    by_org = {s.organization: s for s in f.sources}
+    assert by_org["WHO"].updated_at == "2026-04-23T00:00:00+00:00"
+    assert by_org["Media"].updated_at == "2026-09-19T00:00:00+00:00"
