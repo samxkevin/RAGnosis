@@ -158,6 +158,26 @@ _PERSONAL_DISEASE_NAMES = (
     "yellow fever", "lassa fever", "scrub typhus", "japanese encephalitis",
 )
 
+# Common conditions that are personal medical determinations when attributed to
+# the user but do NOT end in a recognised medical suffix, so the suffix rule
+# below cannot catch them. Kept as an explicit, conservative allow-list of
+# widely-known conditions (not an attempt at exhaustive medical coverage).
+_PERSONAL_CONDITION_NAMES = (
+    "diabetes", "asthma", "epilepsy", "hypertension", "anaemia", "anemia",
+    "arthritis", "hiv", "aids", "covid", "covid-19", "influenza", "the flu",
+)
+
+# Ordinary English / proper-noun words that end in a medical-looking suffix but
+# are NOT medical conditions. The suffix-based detector below excludes these so
+# it does not flag sentences like "You have a diploma." A short, curated list is
+# used deliberately: the detector stays conservative rather than guessing.
+_NON_MEDICAL_SUFFIX_WORDS = (
+    "diploma", "aroma", "coma", "sympathy", "empathy", "apathy", "antipathy",
+    "telepathy", "homeopathy", "osteopathy", "naturopathy", "allopathy",
+    "oklahoma", "sonoma", "tacoma", "paloma", "roma", "gnosis", "prognosis",
+    "diagnosis",
+)
+
 # §18 — personal medical determination patterns. These assert something about
 # the *individual user's* health status, infection, or treatment authorization,
 # which RAGnosis must never do. Population/regional statements are NOT matched
@@ -194,15 +214,15 @@ _PERSONAL_MEDICAL_PATTERNS = (
     r"diagnosed\s+with\s+)?"
     r"(?:probably\s+|likely\s+)?(?:a\s+case\s+of\s+|an?\s+|the\s+)?"
     r"(?:" + "|".join(re.escape(_d) for _d in _PERSONAL_DISEASE_NAMES) + r")\b",
-    # Direct attribution of a condition OUTSIDE the disease list, recognised by a
-    # medical-condition suffix (e.g. brucellosis, meningitis, leukaemia,
-    # septicaemia, nephropathy, carcinoma). "you have <word><medical-suffix>".
-    # This keeps population statements safe because it requires "you have/'ve
-    # got" directed at the user, and a leading negation is excluded downstream.
-    r"\byou\s+(?:probably\s+|likely\s+|definitely\s+|certainly\s+|clearly\s+"
-    r"|most likely\s+)?(?:have|'ve\s+got|have\s+got)\s+"
+    # Direct attribution of a common named condition OUTSIDE the disease list
+    # that carries no recognisable medical suffix (diabetes, asthma, epilepsy,
+    # hypertension, ...). Population statements ("people with diabetes ...") and
+    # topic statements ("you have questions about asthma") are not matched
+    # because this requires "you have/'ve got <condition>" directed at the user.
+    r"\byou(?:\s+(?:probably\s+|likely\s+|definitely\s+|certainly\s+|clearly\s+"
+    r"|most likely\s+)?(?:have|have got)|'ve\s+got)\s+"
     r"(?:probably\s+|likely\s+)?(?:a\s+case\s+of\s+|an?\s+|the\s+)?"
-    r"\w*(?:osis|itis|aemia|emia|opathy|pathy|oma|iasis|coccus|ococci)\b",
+    r"(?:" + "|".join(re.escape(_c) for _c in _PERSONAL_CONDITION_NAMES) + r")\b",
     # predicting the user will get infected. An optional adverb
     # (probably/likely/definitely/certainly/soon) may sit between "will" and the
     # verb, and "become infected" is included alongside get/catch/contract.
@@ -225,13 +245,26 @@ _PERSONAL_MEDICAL_PATTERNS = (
     r"(?:antibiotics?|antivirals?|medications?|medicines?|drugs?|treatments?|"
     r"pills?|doses?|prescriptions?|therapy|"
     r"amoxicillin|azithromycin|doxycycline|oseltamivir|tamiflu)\b",
-    # Object stated directly without an explicit "take/use" verb:
-    # "you need this drug", "you require these medications".
-    r"\byou\s+(?:should|can|may|could|must|need|require|will\s+need)\s+"
+    # Object stated directly without an explicit "take/use" verb, with or without
+    # a determiner: "you need this drug", "you require these medications",
+    # "you need antibiotics", "you require treatment". A determiner is optional
+    # here because "you need <medication object>" is itself an individualized
+    # authorization. General education ("treatment options include antibiotics",
+    # "patients should discuss treatment") is not matched: it is not "you
+    # need/require ...". "you can learn more about treatment" is not matched
+    # because the verb is learn, not need/require/take.
+    r"\byou\s+(?:need|require|will\s+need)\s+"
+    r"(?:this|that|the|these|those|a|an|some\s+)?\s*"
+    r"(?:antibiotics?|antivirals?|medications?|medicines?|drugs?|treatments?|"
+    r"treatment|pills?|doses?|prescriptions?|therapy)\b",
+    # "you should/can need this drug" style with mandatory determiner (keeps
+    # "you should rest" etc. unmatched, which lack a medication object).
+    r"\byou\s+(?:should|can|may|could|must)\s+"
     r"(?:this|that|the|these|those|a|an|some\s+)\s*"
     r"(?:antibiotics?|antivirals?|medications?|medicines?|drugs?|treatments?|"
     r"pills?|doses?|prescriptions?|therapy)\b",
-    # "you can start/need treatment" — bare treatment noun without a determiner.
+    # "you can start/need/take treatment" — bare treatment noun with an
+    # authorization verb (take/start/begin/get/receive).
     r"\byou\s+(?:should|can|may|could|must|need to|have to)\s+"
     r"(?:take|start|begin|get|receive)\s+treatment\b",
     r"\bi\s+(?:diagnose|prescribe)\s+you\b",
@@ -239,6 +272,22 @@ _PERSONAL_MEDICAL_PATTERNS = (
     r"\byour\s+(?:personal\s+)?(?:risk of infection|infection risk)\s+is\s+"
     r"(?:high|low|elevated|certain|guaranteed)\b",
 )
+
+# Suffix-based detector for out-of-lexicon conditions ("you have brucellosis").
+# The condition token is captured so it can be validated against a non-medical
+# stoplist and a minimum stem length before it is treated as a determination —
+# this is what keeps "You have a diploma."/"You have an aroma." unflagged
+# without deleting suffix support entirely.
+_PERSONAL_SUFFIX_PATTERN = re.compile(
+    r"\byou(?:\s+(?:probably\s+|likely\s+|definitely\s+|certainly\s+|clearly\s+"
+    r"|most likely\s+)?(?:have|have got)|'ve\s+got)\s+"
+    r"(?:probably\s+|likely\s+)?(?:a\s+case\s+of\s+|an?\s+|the\s+)?"
+    r"(?P<cond>[a-z]+(?:osis|itis|aemia|emia|caemia|opathy|pathy|oma|iasis|"
+    r"coccus|ococci))\b"
+)
+# A genuine condition stem is reasonably long; very short tokens ending in a
+# suffix string (e.g. "oma", "roma") are almost always ordinary words.
+_MIN_CONDITION_LENGTH = 6
 
 _PMID_PATTERN = re.compile(r"\bPMID[:\s]*([0-9]{4,9})\b", re.IGNORECASE)
 _PUBMED_URL_PATTERN = re.compile(
@@ -317,6 +366,21 @@ def detect_personal_medical_claim(text: str) -> list[str]:
             if _is_negated(lowered, match.start()):
                 continue
             found.append(match.group(0).strip())
+
+    # Conservative suffix-based detection for out-of-lexicon conditions. The
+    # candidate token must (a) not be a known non-medical word, and (b) be long
+    # enough to plausibly be a condition, so ordinary words such as "diploma",
+    # "aroma", "empathy" or "coma" are not treated as personal determinations.
+    for match in _PERSONAL_SUFFIX_PATTERN.finditer(lowered):
+        if _is_negated(lowered, match.start()):
+            continue
+        cond = match.group("cond")
+        if cond in _NON_MEDICAL_SUFFIX_WORDS:
+            continue
+        if len(cond) < _MIN_CONDITION_LENGTH:
+            continue
+        found.append(match.group(0).strip())
+
     return found
 
 

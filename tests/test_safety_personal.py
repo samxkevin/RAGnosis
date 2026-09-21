@@ -170,3 +170,134 @@ def test_redteam_out_of_list_and_hedged_flagged(text):
 )
 def test_redteam_out_of_list_not_over_blocked(text):
     assert detect_personal_medical_claim(text) == [], text
+
+
+# --- "finalize deterministic safety boundary": suffix false-positives, --------
+# --- common out-of-list conditions, and treatment authorization gaps. ---------
+@pytest.mark.parametrize(
+    "text",
+    [
+        # ordinary / proper-noun words ending in a medical-looking suffix must
+        # NOT be treated as conditions (conservative suffix detection)
+        "You have a diploma.",
+        "You have an aroma.",
+        "You have empathy.",
+        "You have sympathy.",
+        "You have a coma.",
+        "You are in a coma.",
+        "You have a persona.",
+    ],
+)
+def test_suffix_false_positives_not_flagged(text):
+    assert detect_personal_medical_claim(text) == [], text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # genuine out-of-lexicon conditions recognised by suffix must still flag
+        "You have brucellosis.",
+        "You have leptospirosis.",
+        "You have nephropathy.",
+        "You have septicaemia.",
+    ],
+)
+def test_out_of_lexicon_suffix_conditions_flagged(text):
+    assert detect_personal_medical_claim(text), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # common conditions with no medical suffix, attributed to the user
+        "You have diabetes.",
+        "You have asthma.",
+        "You have epilepsy.",
+        "You have hypertension.",
+        "You probably have diabetes.",
+        "You've got asthma.",
+    ],
+)
+def test_common_named_conditions_flagged(text):
+    assert detect_personal_medical_claim(text), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # population / educational / topic statements about the SAME conditions
+        "People with diabetes may experience fatigue.",
+        "Asthma can cause wheezing.",
+        "Patients with hypertension should discuss treatment with a clinician.",
+        "You have questions about asthma.",
+        "Diabetes is a chronic condition.",
+        "You do not have diabetes.",
+    ],
+)
+def test_common_named_conditions_not_over_blocked(text):
+    assert detect_personal_medical_claim(text) == [], text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # individualized treatment authorization, all required forms
+        "You need treatment.",
+        "You need antibiotics.",
+        "You require treatment.",
+        "You should take this medication.",
+        "You can take this medication.",
+        "You may take these antibiotics.",
+        "You can start treatment.",
+        "You could use this medicine.",
+        "You need this drug.",
+        "You require these medications.",
+    ],
+)
+def test_treatment_authorization_forms_flagged(text):
+    assert detect_personal_medical_claim(text), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # general educational / advisory statements must remain possible
+        "Treatment options include antibiotics.",
+        "Patients should discuss treatment with a clinician.",
+        "You can learn more about treatment from your doctor.",
+        "You should consult a doctor.",
+        "You should get vaccinated.",
+        "You should rest and stay hydrated.",
+    ],
+)
+def test_treatment_education_not_over_blocked(text):
+    assert detect_personal_medical_claim(text) == [], text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # negation must suppress a personal determination in every branch
+        "You do not have diabetes.",
+        "You are not infected.",
+        "This does not establish a diagnosis.",
+        "This image cannot confirm cancer.",
+        "You do not have brucellosis.",
+    ],
+)
+def test_negation_suppresses_determination(text):
+    assert detect_personal_medical_claim(text) == [], text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "You have diabetes.",
+        "You have brucellosis.",
+        "You need antibiotics.",
+        "You require treatment.",
+    ],
+)
+def test_validate_withholds_finalized_boundary(text):
+    result = validate_response(text)
+    assert result.action is SafetyAction.WITHHELD, text
