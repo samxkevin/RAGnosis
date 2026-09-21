@@ -1374,6 +1374,34 @@ class QueryContext:
         score, reason = self.score(finding)
         return score > 0, reason
 
+    def is_query_relevant(self, finding: DiseaseFinding) -> bool:
+        """Return whether ``finding`` is relevant to what the user asked about.
+
+        Read-only classification used to scope trace observability (it never
+        changes retrieval, ranking, or content). Distinct from ``matched_query``:
+        because the requested location echoes into every finding, a location-only
+        match makes ``matched_query`` True even for unrelated findings returned by
+        broad surveillance. Relevance here is content-scoped:
+
+        * If the query named a disease, a finding is relevant only when its
+          disease name matches one of those query disease terms.
+        * If the query named no disease (location-/keyword-only), fall back to a
+          non-location match: a finding is relevant when a query keyword matches
+          its disease name or affected areas (not merely the echoed location).
+        """
+        if self.disease_terms:
+            disease_hay = finding.disease_name.lower()
+            return any(t in disease_hay for t in self.disease_terms)
+        if self.keyword_terms:
+            disease_hay = finding.disease_name.lower()
+            area_hay = " ".join(finding.affected_areas).lower()
+            return any(
+                t in disease_hay or t in area_hay for t in self.keyword_terms
+            )
+        # A purely location-scoped query: any finding matched for that location
+        # is considered relevant (there is no finer content signal to use).
+        return bool(finding.matched_query)
+
 
 def build_query_context(
     query: str | None, locations: Iterable[Location] | None = None

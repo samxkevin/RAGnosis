@@ -170,6 +170,73 @@ def test_trace_conflicts_present_flag():
     assert r.trace.conflicts_present is True
 
 
+# --- query-scoped conflict observability -----------------------------------
+# ``conflicts_present`` must reflect conflicts affecting the QUERY-RELEVANT
+# findings, not arbitrary unrelated findings returned by broad surveillance.
+
+_EBOLA_QUERY = "Is there currently an Ebola outbreak in Hyderabad, Telangana, India?"
+_EBOLA_LOCATION = "Hyderabad, Telangana, India"
+
+
+def test_conflicts_present_true_when_relevant_finding_conflicts():
+    # (a) The queried disease (Ebola) itself has disagreeing sources -> True.
+    e1 = _item(organization="WHO", tier="primary_official",
+               title="Ebola outbreak confirmed", stated_status="outbreak",
+               uri="https://who.int/e1")
+    e2 = _item(organization="Media", tier="secondary",
+               title="Officials say ebola outbreak ruled out",
+               stated_status="no_outbreak", uri="https://media/e2")
+    agent = _agent([
+        _Provider("WHO", "primary_official", [e1]),
+        _Provider("Media", "secondary", [e2]),
+    ])
+    r = agent.run(MultimodalRequest(question=_EBOLA_QUERY),
+                  location_text=_EBOLA_LOCATION)
+    ebola = [f for f in r.health["findings"] if f["disease_name"] == "ebola"][0]
+    assert ebola["status"] == "conflicting"
+    assert r.trace.conflicts_present is True
+    assert r.trace.unrelated_conflicts_present is False
+
+
+def test_conflicts_present_false_when_only_unrelated_finding_conflicts():
+    # (b) The reported bug: Ebola (queried) is clean; an unrelated disease has a
+    # conflict. conflicts_present must be False; the info is preserved separately.
+    ebola = _item(organization="WHO", tier="primary_official",
+                  title="Ebola outbreak confirmed", stated_status="outbreak",
+                  uri="https://who.int/ebola")
+    m1 = _item(organization="WHO", tier="primary_official",
+               title="Measles outbreak confirmed", stated_status="outbreak",
+               geo_scope="global", uri="https://who.int/m1")
+    m2 = _item(organization="Media", tier="secondary",
+               title="Officials say measles outbreak ruled out",
+               stated_status="no_outbreak", geo_scope="global",
+               uri="https://media/m2")
+    agent = _agent([
+        _Provider("WHO", "primary_official", [ebola, m1]),
+        _Provider("Media", "secondary", [m2]),
+    ])
+    r = agent.run(MultimodalRequest(question=_EBOLA_QUERY),
+                  location_text=_EBOLA_LOCATION)
+    findings = {f["disease_name"]: f for f in r.health["findings"]}
+    # Ebola itself carries no conflict; the unrelated measles finding does.
+    assert findings["ebola"]["conflict_summary"] is None
+    assert findings["measles"]["status"] == "conflicting"
+    assert r.trace.conflicts_present is False
+    assert r.trace.unrelated_conflicts_present is True
+
+
+def test_conflicts_present_false_when_no_conflicts():
+    # (c) No conflicting findings at all -> both flags False.
+    ebola = _item(organization="WHO", tier="primary_official",
+                  title="Ebola outbreak confirmed", stated_status="outbreak",
+                  uri="https://who.int/ec")
+    agent = _agent([_Provider("WHO", "primary_official", [ebola])])
+    r = agent.run(MultimodalRequest(question=_EBOLA_QUERY),
+                  location_text=_EBOLA_LOCATION)
+    assert r.trace.conflicts_present is False
+    assert r.trace.unrelated_conflicts_present is False
+
+
 # --- query-awareness (§2) --------------------------------------------------
 
 def test_query_context_grades_disease_over_location():

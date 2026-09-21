@@ -28,7 +28,7 @@ import logging
 from typing import Any
 
 from .config import MultimodalConfig
-from .health_intelligence import HealthIntelligence
+from .health_intelligence import HealthIntelligence, build_query_context
 from .health_schemas import DiseaseFinding, HealthIntelligenceResult
 from .location import Location, resolve_location
 from .routing import RouteDecision, classify
@@ -190,6 +190,7 @@ class AgentService:
         sources_map: dict[str, str] = {}
         cache_hit = False
         conflicts_present = False
+        unrelated_conflicts_present = False
         if health_result is not None:
             for name in health_result.sources_succeeded:
                 sources_map[name] = (
@@ -198,10 +199,22 @@ class AgentService:
             for name in health_result.sources_failed:
                 sources_map[name] = "failed"
             cache_hit = bool(health_result.cache_hits)
-            conflicts_present = any(
-                f.status == "conflicting" or f.conflict_summary
-                for f in health_result.findings
-            )
+            # A finding is "in conflict" when it is classified conflicting or
+            # carries a conflict summary. Scope the trace's ``conflicts_present``
+            # to findings relevant to the user's query: a conflict on an
+            # unrelated finding returned by broad surveillance retrieval must not
+            # misleadingly flag the query-relevant evidence. Relevance is decided
+            # by the deterministic query context (content-scoped, so the echoed
+            # request location alone does not count). The unrelated conflict
+            # information is preserved separately rather than discarded.
+            query_ctx = build_query_context(request.question, locations)
+            for f in health_result.findings:
+                if not (f.status == "conflicting" or f.conflict_summary):
+                    continue
+                if query_ctx.is_query_relevant(f):
+                    conflicts_present = True
+                else:
+                    unrelated_conflicts_present = True
 
         used_current_data = live_data_status in ("ok", "partial")
 
@@ -219,6 +232,7 @@ class AgentService:
             used_current_data=used_current_data,
             cache_hit=cache_hit,
             conflicts_present=conflicts_present,
+            unrelated_conflicts_present=unrelated_conflicts_present,
         )
 
         return AgentResponse(

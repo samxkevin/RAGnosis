@@ -179,8 +179,14 @@ class ExecutionTrace:
     used_current_data: bool = False
     # Whether the health layer served any result from cache.
     cache_hit: bool = False
-    # Whether conflicting evidence was present among the findings.
+    # Whether conflicting evidence was present among the QUERY-RELEVANT findings
+    # (those that matched the user's query terms). A conflict on an unrelated
+    # finding returned by broad surveillance retrieval does not set this.
     conflicts_present: bool = False
+    # Whether conflicting evidence was present among findings that did NOT match
+    # the query (broad-retrieval context). Preserved so the information is not
+    # discarded, while keeping ``conflicts_present`` query-scoped.
+    unrelated_conflicts_present: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
