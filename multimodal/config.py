@@ -48,10 +48,10 @@ class MultimodalConfig:
     vision_model: str = "gpt-4.1-mini"
     vision_timeout: float = 90.0
 
-    # Grounded generation (Cohere).
+    # Grounded generation (Cohere Chat API V2).
     cohere_api_key: str = ""
-    cohere_model: str = "command-a-03-2025"
-    cohere_fallback_model: str = "command-r7b-12-2024"
+    cohere_model: str = "command-a-plus-05-2026"
+    cohere_fallback_model: str = "command-a-reasoning-08-2025"
 
     # Biomedical retrieval (NCBI PubMed E-utilities).
     pubmed_timeout: float = 15.0
@@ -89,9 +89,11 @@ class MultimodalConfig:
             vision_model=os.getenv("MULTIMODAL_VISION_MODEL", "gpt-4.1-mini"),
             vision_timeout=_get_float("MULTIMODAL_TIMEOUT", 90.0),
             cohere_api_key=os.getenv("COHERE_API_KEY", ""),
-            cohere_model=os.getenv("COHERE_MULTIMODAL_RAG_MODEL", "command-a-03-2025"),
+            cohere_model=os.getenv(
+                "COHERE_MULTIMODAL_RAG_MODEL", "command-a-plus-05-2026"
+            ),
             cohere_fallback_model=os.getenv(
-                "COHERE_MULTIMODAL_FALLBACK_MODEL", "command-r7b-12-2024"
+                "COHERE_MULTIMODAL_FALLBACK_MODEL", "command-a-reasoning-08-2025"
             ),
             pubmed_timeout=_get_float("PUBMED_TIMEOUT", 15.0),
             pubmed_tool=os.getenv("PUBMED_TOOL", "RAGnosis"),

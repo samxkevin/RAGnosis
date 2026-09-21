@@ -165,4 +165,4 @@ def test_default_collaborators_constructed_from_config():
     # Smoke test: default wiring should not require network at construction.
     service = MultimodalRAGService(MultimodalConfig())
     assert isinstance(service.retriever, BiomedicalRetriever)
-    assert service.cohere_model == "command-a-03-2025"
+    assert service.cohere_model == "command-a-plus-05-2026"

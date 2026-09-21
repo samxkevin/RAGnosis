@@ -89,8 +89,8 @@ This permits a hosted VLM today and a local/self-hosted adapter later without ch
 | `MULTIMODAL_VISION_MODEL` | Vision model id | `gpt-4.1-mini` |
 | `MULTIMODAL_TIMEOUT` | Vision HTTP timeout (s) | `90` |
 | `COHERE_API_KEY` | Generation key | (unset) |
-| `COHERE_MULTIMODAL_RAG_MODEL` | Primary generation model | `command-a-03-2025` |
-| `COHERE_MULTIMODAL_FALLBACK_MODEL` | Fallback generation model | `command-r7b-12-2024` |
+| `COHERE_MULTIMODAL_RAG_MODEL` | Primary generation model (Cohere Chat V2) | `command-a-plus-05-2026` |
+| `COHERE_MULTIMODAL_FALLBACK_MODEL` | Fallback generation model (Cohere Chat V2) | `command-a-reasoning-08-2025` |
 | `PUBMED_TIMEOUT` | PubMed HTTP timeout (s) | `15` |
 | `PUBMED_TOOL` / `PUBMED_EMAIL` / `PUBMED_API_KEY` | NCBI etiquette / rate limit | `RAGnosis` / (unset) / (unset) |
 | `MULTIMODAL_MAX_UPLOAD_BYTES` | Max upload size | `12582912` |

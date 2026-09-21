@@ -40,8 +40,10 @@ class TextGenerator(Protocol):
 class CohereGenerator:
     """Cohere-backed generator with primary/fallback model handling.
 
-    Imports the Cohere SDK lazily so the package remains importable (and unit
-    testable via an injected generator) without the dependency present.
+    Uses the Cohere Chat API **V2** (``cohere.ClientV2`` + ``messages=[...]``);
+    the current command models are only served on ``/v2/chat``. Imports the
+    Cohere SDK lazily so the package remains importable (and unit testable via an
+    injected generator) without the dependency present.
     """
 
     def __init__(self, config: MultimodalConfig | None = None) -> None:
@@ -59,13 +61,34 @@ class CohereGenerator:
         if self._client is None:
             import cohere  # local import keeps the dependency optional at import time
 
-            self._client = cohere.Client(self.config.cohere_api_key)
+            self._client = cohere.ClientV2(self.config.cohere_api_key)
         return self._client
 
+    @staticmethod
+    def _extract_text(response) -> str:
+        """Read text from a Cohere V2 chat response (``message.content[0].text``).
+
+        Defensive against missing/empty content so an empty response is handled
+        by the caller rather than raising an ``AttributeError``/``IndexError``.
+        """
+        message = getattr(response, "message", None)
+        content = getattr(message, "content", None) or []
+        parts: list[str] = []
+        for block in content:
+            text = getattr(block, "text", None)
+            if text is None and isinstance(block, dict):
+                text = block.get("text")
+            if text:
+                parts.append(text)
+        return "".join(parts).strip()
+
     def _chat(self, prompt: str, model: str) -> str:
-        response = self._get_client().chat(model=model, message=prompt, temperature=0.1)
-        text = getattr(response, "text", "") or ""
-        return text.strip()
+        response = self._get_client().chat(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+        )
+        return self._extract_text(response)
 
     def generate(self, prompt: str) -> tuple[str, str]:
         client_model = self.config.cohere_model
