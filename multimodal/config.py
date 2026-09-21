@@ -115,4 +115,3 @@ class MultimodalConfig:
             health_recent_days=_get_int("HEALTH_RECENT_DAYS", 60),
             health_source_feeds=os.getenv("HEALTH_SOURCE_FEEDS", ""),
         )
-
