@@ -9,6 +9,14 @@ from flask_cors import CORS
 from neo4j import GraphDatabase
 import cohere
 
+# Reuse the already-validated multimodal + agent HTTP layer instead of forking
+# it. Importing the module builds its CONFIG/service/agent once (no network at
+# construction) and exposes the /agent and /analyze view functions, the 413
+# handler, and the upload limit that this canonical entrypoint mounts below.
+# multimodal_api keeps its own app/service/agent so its contract tests and local
+# development server continue to work unchanged.
+import multimodal_api
+
 logging.getLogger("neo4j").setLevel(logging.ERROR)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ragnosis")
@@ -302,10 +310,25 @@ def get_pipeline():
 app = Flask(__name__)
 CORS(app)
 
+# Reject oversized uploads at the WSGI layer, matching the multimodal API's
+# limit so /analyze and /agent behave identically here (oversized -> 413).
+app.config["MAX_CONTENT_LENGTH"] = multimodal_api.CONFIG.max_upload_bytes
+
 
 @app.route("/", methods=["GET"])
 def index():
-    return send_from_directory(ROOT_DIR, "index.html")
+    """Serve the RAGnosis agent UI (question + optional location/image)."""
+    return send_from_directory(ROOT_DIR / "multimodal", "demo.html")
+
+
+# Mount the composed multimodal agent + image analysis endpoints by reusing the
+# exact, already-tested view functions from multimodal_api (no duplication, no
+# forking of the agent/vision/retrieval/health/safety/generation pipeline). They
+# read multimodal_api.service / multimodal_api.agent, so their behavior — and the
+# test injection of those globals — is preserved verbatim.
+app.add_url_rule("/agent", view_func=multimodal_api.agent_analyze, methods=["POST"])
+app.add_url_rule("/analyze", view_func=multimodal_api.analyze, methods=["POST"])
+app.register_error_handler(413, multimodal_api.too_large)
 
 
 @app.route("/chat", methods=["POST"])
@@ -345,10 +368,13 @@ def health():
     pipeline = get_pipeline()
     neo4j_configured = pipeline.neo4j.configured()
     neo4j_connected = pipeline.neo4j.ping() if neo4j_configured else False
+    service = multimodal_api.service
+    agent = multimodal_api.agent
     return jsonify(
         {
             "status": "ok",
             "disclaimer": MEDICAL_DISCLAIMER,
+            # --- legacy production dependencies (Neo4j + Cohere chat) ---------
             "neo4j": {
                 "configured": neo4j_configured,
                 "connected": neo4j_connected,
@@ -359,6 +385,12 @@ def health():
                 "configured": pipeline.rag.configured(),
                 "model": pipeline.rag.model,
             },
+            # --- new multimodal / agent configuration ------------------------
+            # These mirror the fields the agent UI (demo.html) reads from
+            # /health so status shows correctly on the canonical entrypoint.
+            "vision_configured": service.vision.configured(),
+            "generation_configured": service.generator.configured(),
+            "health_intelligence_configured": agent.health.configured(),
         }
     )
 

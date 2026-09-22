@@ -7,7 +7,7 @@
 
 RAGnosis is a text-only biomedical retrieval-augmented chatbot. A user describes symptoms in a browser chat. Flask retrieves related entities from a remote [Neo4j Aura](https://neo4j.com/product/auradb/) knowledge graph, then [Cohere](https://docs.cohere.com/) generates a follow-up or advice reply from that context.
 
-The production application is the Flask service at the repository root (`app.py` and `index.html`). It is designed to run as a Render web service with gunicorn. Experimental notebooks, Colab pipeline exports, and graph-construction utilities live under `experiments/` and `scripts/`. Those files document how the graph and RAG prototype were built. They are not the Render application.
+The production application is the single Flask service at the repository root (`app.py`, exposed to Render as `app:app`). It serves the RAGnosis agent UI (`multimodal/demo.html`) at `/`, the composed multimodal agent (`/agent`, `/analyze`), and the legacy Neo4j + Cohere chat API (`/chat`, backward compatible). It is designed to run as a Render web service with gunicorn. Experimental notebooks, Colab pipeline exports, and graph-construction utilities live under `experiments/` and `scripts/`. Those files document how the graph and RAG prototype were built. They are not the Render application.
 
 RAGnosis is informational only. It does not provide professional medical diagnosis or treatment and is not a substitute for qualified clinical care. Seek in-person medical help for personal health decisions.
 
@@ -65,11 +65,15 @@ experiments/        Notebooks and Colab pipeline exports (not deployed)
 
 ## HTTP API
 
+The canonical Render entrypoint is `app:app`. It serves the RAGnosis agent UI and both the composed agent and the legacy chat API from a single Flask application. The composed agent, vision, retrieval, health-intelligence, safety, and generation logic are reused from `multimodal_api` / the `multimodal` package — not duplicated.
+
 | Method | Path | Behavior |
 | --- | --- | --- |
-| `GET` | `/` | Serves `index.html` |
-| `GET` | `/health` | Returns process liveness (`status: ok`) and whether Neo4j and Cohere are configured. HTTP 200 even if Aura or Cohere is down. |
-| `POST` | `/chat` | JSON `{ "message": "...", "conversation": [] }`. Retrieves graph context, then generates a reply. Empty messages return 400. Retrieval failure returns 503 with an error payload, not a fake answer. |
+| `GET` | `/` | Serves the RAGnosis agent UI (`multimodal/demo.html`): question + optional explicit location + optional image, with answer, safety status, health-intelligence findings, evidence, provenance, execution trace, freshness, and limitations. |
+| `POST` | `/agent` | Multipart form `question` (required), optional `location` (explicit only, never inferred), optional `image`. Runs the full composed agent (routing → graph / PubMed / multimodal observations / live public-health intelligence → evidence fusion → provenance + execution trace → deterministic safety). Missing question → 400, invalid image → 400, missing configuration → 503, upstream/provider failure → 502, oversized upload → 413. |
+| `POST` | `/analyze` | Multipart form `question` + `image` (both required) for multimodal image analysis. Same error semantics as `/agent`. |
+| `GET` | `/health` | Returns process liveness (`status: ok`) plus legacy dependency status (Neo4j, Cohere) and new multimodal/agent configuration (`vision_configured`, `generation_configured`, `health_intelligence_configured`). HTTP 200 even if a dependency is down. |
+| `POST` | `/chat` | Legacy Neo4j + Cohere doctor-chat API, preserved for backward compatibility. JSON `{ "message": "...", "conversation": [] }`. Retrieves graph context, then generates a reply. Empty messages return 400. Retrieval failure returns 503 with an error payload, not a fake answer. |
 
 ## Configuration
 
