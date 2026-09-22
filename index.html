@@ -1106,32 +1106,48 @@
       letter-spacing: -0.018em;
     }
 
+    /* The tight 0.9 line-height pulls lines together enough that the "p"/"g"
+       descenders on line 1 ("Ask the graph.") collide with the ascenders on
+       line 2 ("Understand the"). A small em-based top margin on the second
+       line box restores a clean optical gap and scales with the responsive
+       font-size, without touching the font, weight, alignment or size. */
     .hero-quote .q-pair {
-      margin: 0;
+      margin: 0.14em 0 0;
     }
 
     /* ============================================================
-       AGENT PAGE — monochrome, matches the RAGnosis identity.
+       AGENT PAGE - monochrome, matches the RAGnosis identity.
        Composed multimodal agent (POST /agent). Not a second theme;
-       reuses --bg / --ink / --line / --panel and the mono/serif fonts.
+       reuses --bg / --ink / --line / --panel / --panel-2 and the
+       mono/serif fonts. Editorial hierarchy: the answer dominates,
+       everything else (trace, table, evidence, meta) is secondary.
        ============================================================ */
-    .agent-page .shell { padding-top: 30px; }
-    .agent-heading { margin-bottom: 22px; }
+    .agent-page .shell { padding-top: 34px; max-width: 62rem; }
+
+    /* --- Heading ------------------------------------------------ */
+    .agent-heading { margin-bottom: 30px; }
     .agent-heading h1 {
-      margin: 6px 0 12px;
+      margin: 8px 0 16px;
       font-family: var(--georgia);
       font-weight: 400;
-      font-size: clamp(1.9rem, 1.3rem + 2.4vw, 3rem);
-      letter-spacing: 0.005em;
-      line-height: 1.16;
+      font-size: clamp(2.15rem, 1.3rem + 3vw, 3.4rem);
+      letter-spacing: 0.004em;
+      line-height: 1.12;
+      color: #f7f7f7;
     }
-    .agent-heading p { max-width: 46rem; }
+    .agent-heading p {
+      max-width: 46rem;
+      font-size: 15.5px;
+      line-height: 1.7;
+      color: #c9c9c9;
+    }
 
+    /* --- Generic panel (input + result) ------------------------- */
     .agent-card {
       border: 1px solid var(--line);
       background: var(--panel);
-      padding: 20px 22px;
-      margin: 0 0 16px;
+      padding: 22px 24px;
+      margin: 0 0 18px;
     }
     .agent-card h2 {
       margin: 0 0 14px;
@@ -1139,105 +1155,295 @@
       font-weight: 400;
       font-size: 1.4rem;
     }
-    .agent-card h3 {
-      margin: 20px 0 8px;
-      font-family: var(--georgia);
-      font-weight: 400;
-      font-size: 1.16rem;
-      border-top: 1px solid var(--line);
-      padding-top: 16px;
-    }
-    .agent-card h3:first-of-type { border-top: 0; padding-top: 0; }
 
-    .agent-status {
+    /* --- Status row: compact monochrome pills ------------------- */
+    .agent-status-bar {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px 26px;
+      align-items: center;
+      gap: 10px 12px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 12px 16px;
+      margin: 0 0 18px;
+    }
+    .agent-status-bar .status-caption {
       font-family: var(--mono);
-      font-size: 11px;
-      letter-spacing: 0.12em;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin-right: 2px;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      padding: 5px 11px;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--muted);
+      white-space: nowrap;
     }
-    .agent-status .ok { color: var(--ink); }
-    .agent-status .no { color: var(--bad); }
+    .status-pill .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--dim);
+      flex: 0 0 auto;
+    }
+    .status-pill .status-label { color: var(--muted); }
+    .status-pill .status-value { color: var(--muted); }
+    .status-pill.is-ok { border-color: #4a4a4a; color: var(--ink); }
+    .status-pill.is-ok .dot { background: #e6e6e6; }
+    .status-pill.is-ok .status-value { color: var(--ink); }
+    .status-pill.is-off .dot { background: #3a3a3a; }
+    .status-pill.is-off .status-value { color: var(--bad); }
 
-    .agent-field { display: block; margin: 0 0 6px; }
+    /* --- Input area -------------------------------------------- */
+    .agent-form-card { padding: 24px; }
+    .agent-field { display: block; margin: 0 0 18px; }
+    .agent-field:last-of-type { margin-bottom: 0; }
     .agent-field-label {
       display: block;
-      margin: 16px 0 6px;
+      margin: 0 0 8px;
       font-family: var(--mono);
       font-size: 11px;
       letter-spacing: 0.16em;
       text-transform: uppercase;
       color: var(--muted);
     }
-    .agent-field-label:first-child { margin-top: 0; }
+    .agent-field-hint {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: none;
+      color: var(--dim);
+    }
     .agent-card textarea,
     .agent-card input[type="text"],
     .agent-card input[type="file"] {
       width: 100%;
-      padding: 12px;
+      padding: 12px 14px;
       border: 1px solid var(--line);
       background: #0a0a0a;
       color: var(--ink);
       font-family: "Segoe UI", Arial, sans-serif;
-      font-size: 15.5px;
+      font-size: 15px;
       outline: none;
+      transition: border-color 0.15s ease;
     }
-    .agent-card textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+    /* The question is the primary input: taller, slightly larger. */
+    #agent-question {
+      min-height: 108px;
+      resize: vertical;
+      line-height: 1.55;
+      font-size: 16px;
+    }
     .agent-card textarea:focus,
-    .agent-card input[type="text"]:focus { border-color: #6a6a6a; }
-    .agent-card input[type="file"] { padding: 10px 12px; color: var(--muted); }
-
-    .agent-actions { margin-top: 18px; }
-
-    #agent-result { display: none; }
-    #agent-result h3 { color: var(--ink); }
-    .agent-answer pre,
-    .agent-answer {
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      font-family: "Segoe UI", Arial, sans-serif;
-      font-size: 15.5px;
-      line-height: 1.6;
-      color: #e4e4e4;
-      margin: 0;
+    .agent-card input[type="text"]:focus { border-color: #7a7a7a; }
+    .agent-card input[type="file"] {
+      padding: 10px 12px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
     }
-    .agent-answer pre { margin: 0; }
+    .agent-actions {
+      margin-top: 22px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    #agent-submit { min-width: 148px; }
 
+    /* --- Result: the answer is the visual focus ---------------- */
+    #agent-result { display: none; padding: 0; border: 0; background: none; }
+    .agent-answer-block {
+      border: 1px solid var(--line);
+      border-left: 3px solid #5a5a5a;
+      background: var(--panel);
+      padding: 24px 26px;
+      margin: 0 0 22px;
+    }
+    .agent-answer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .agent-answer-head h2 {
+      margin: 0;
+      font-family: var(--georgia);
+      font-weight: 400;
+      font-size: 1.1rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    /* Formatted answer body: the dominant typography on the page. */
+    .agent-answer {
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 17.5px;
+      line-height: 1.7;
+      color: #ededed;
+    }
+    .agent-answer > *:first-child { margin-top: 0; }
+    .agent-answer > *:last-child { margin-bottom: 0; }
+    .agent-answer p { margin: 0 0 0.85em; color: #ededed; }
+    .agent-answer ul,
+    .agent-answer ol { margin: 0 0 0.9em; padding-left: 1.4em; }
+    .agent-answer li { margin: 0 0 0.4em; line-height: 1.65; color: #ededed; }
+    .agent-answer h1,
+    .agent-answer h2,
+    .agent-answer h3 {
+      font-family: var(--georgia);
+      font-weight: 400;
+      line-height: 1.3;
+      margin: 1em 0 0.4em;
+      color: #f4f4f4;
+    }
+    .agent-answer h1 { font-size: 1.35em; }
+    .agent-answer h2 { font-size: 1.2em; }
+    .agent-answer h3 { font-size: 1.08em; }
+    .agent-answer strong { color: #ffffff; font-weight: 600; }
+    .agent-answer em { font-style: italic; }
+    .agent-answer code,
+    .agent-answer .inline-code {
+      font-family: var(--mono);
+      font-size: 0.86em;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      padding: 0.05em 0.35em;
+      color: #e6e6e6;
+    }
+    .agent-answer blockquote {
+      margin: 0 0 0.9em;
+      padding-left: 14px;
+      border-left: 2px solid var(--line);
+      color: #cfcfcf;
+    }
+    .agent-answer pre {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 0 0 0.9em;
+    }
+    .agent-answer pre code { border: 0; background: none; padding: 0; }
+    .agent-answer .warn {
+      display: block;
+      border-left: 2px solid #6a6a6a;
+      padding-left: 12px;
+      color: #f0f0f0;
+    }
+
+    /* Safety badge (monochrome). */
     .agent-badge {
       display: inline-block;
-      padding: 4px 10px;
+      padding: 4px 11px;
       border: 1px solid var(--line);
       font-family: var(--mono);
       font-size: 10px;
       letter-spacing: 0.14em;
       text-transform: uppercase;
       color: var(--ink);
+      white-space: nowrap;
     }
-    .agent-badge.block, .agent-badge.warn { color: #dcdcdc; border-color: #5a5a5a; }
+    .agent-badge.block,
+    .agent-badge.warn { color: #f0f0f0; border-color: #7a7a7a; }
 
-    #agent-result ul { margin: 6px 0 14px; padding-left: 20px; }
-    #agent-result li { margin: 0 0 7px; color: #d6d6d6; line-height: 1.5; }
-    #agent-result .warn { color: #f0f0f0; }
-    #agent-result ul.warn li { color: #e6e6e6; }
-    #agent-answer .warn {
-      display: inline-block;
-      border-left: 2px solid #6a6a6a;
-      padding-left: 10px;
-      color: #f0f0f0;
+    /* --- Secondary result sections ----------------------------- */
+    .agent-section {
+      border-top: 1px solid var(--line);
+      padding-top: 20px;
+      margin: 0 0 22px;
     }
-    #agent-result p { color: #cfcfcf; margin: 0 0 8px; }
+    .agent-section > h3 {
+      margin: 0 0 12px;
+      font-family: var(--mono);
+      font-weight: 500;
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #cfcfcf;
+    }
+    /* Evidence typography ~14-15px. */
+    #agent-evidence ul,
+    #agent-observations ul { margin: 4px 0 14px; padding-left: 20px; }
+    #agent-evidence li,
+    #agent-observations li {
+      margin: 0 0 8px;
+      font-size: 14.5px;
+      line-height: 1.55;
+      color: #d6d6d6;
+    }
+    #agent-evidence p { margin: 14px 0 4px; }
+    #agent-result p { color: #cfcfcf; margin: 0 0 8px; font-size: 14.5px; line-height: 1.6; }
     #agent-result .muted { color: var(--muted); }
+    #agent-result a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+    #agent-result a:hover { color: #ffffff; }
     #agent-result code {
       font-family: var(--mono);
       font-size: 12px;
       color: #e2e2e2;
     }
-    #agent-result a { color: var(--ink); text-decoration: underline; }
-    #agent-result details { margin: 4px 0 12px; }
-    #agent-result summary { cursor: pointer; }
+
+    /* Execution trace: visually secondary, compact metadata. */
+    .agent-trace {
+      border: 1px solid var(--line);
+      border-top: 1px solid var(--line);
+      background: var(--panel);
+      padding: 16px 18px;
+      margin: 0 0 22px;
+    }
+    .agent-trace h3 {
+      margin: 0 0 10px;
+      font-family: var(--mono);
+      font-weight: 500;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .agent-trace p {
+      margin: 0 0 5px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      line-height: 1.6;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+    }
+    .agent-trace code { font-size: 11px; color: #e2e2e2; }
+    .agent-trace details { margin: 8px 0 0; }
+    .agent-trace summary { cursor: pointer; font-size: 11px; color: var(--dim); }
+    .agent-trace details ul { margin: 6px 0 0; padding-left: 18px; }
+    .agent-trace details li { font-size: 11px; color: var(--muted); margin: 0 0 3px; }
+
+    /* Safety warnings + limitations: distinct but monochrome. */
+    .agent-note {
+      border: 1px solid var(--line);
+      border-left: 3px solid #7a7a7a;
+      background: var(--panel-2);
+      padding: 14px 16px 6px;
+      margin: 0 0 22px;
+    }
+    .agent-note h3 {
+      margin: 0 0 8px;
+      font-family: var(--mono);
+      font-weight: 500;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #e6e6e6;
+    }
+    .agent-note ul { margin: 0 0 8px; padding-left: 20px; }
+    .agent-note li { margin: 0 0 6px; font-size: 14px; line-height: 1.55; color: #e2e2e2; }
+    .agent-note.is-limitations { border-left-color: var(--line); }
+    .agent-note.is-limitations li { color: var(--muted); }
 
     .pill {
       display: inline-block;
@@ -1249,24 +1455,40 @@
       text-transform: uppercase;
       color: var(--muted);
     }
-    .pill.alert { color: #f0f0f0; border-color: #6a6a6a; }
+    .pill.alert { color: #f0f0f0; border-color: #7a7a7a; }
     .pill.watch { color: #cccccc; }
 
-    .agent-table-wrap { overflow-x: auto; margin: 4px 0 12px; }
+    /* --- Public health table: dense, scrollable, secondary ----- */
+    .agent-table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 6px 0 12px;
+      border: 1px solid var(--line);
+    }
     #agent-result table {
       border-collapse: collapse;
       width: 100%;
+      min-width: 760px;
       font-size: 12.5px;
       font-family: "Segoe UI", Arial, sans-serif;
     }
-    #agent-result th, #agent-result td {
-      border: 1px solid var(--line);
-      padding: 8px 10px;
+    #agent-result th,
+    #agent-result td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 9px 12px;
       text-align: left;
       vertical-align: top;
+      line-height: 1.5;
       color: #d6d6d6;
     }
-    #agent-result th {
+    #agent-result th:last-child,
+    #agent-result td:last-child { border-right: 0; }
+    #agent-result tbody tr:last-child td { border-bottom: 0; }
+    #agent-result tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.015); }
+    #agent-result thead th {
+      position: sticky;
+      top: 0;
       font-family: var(--mono);
       font-size: 10px;
       letter-spacing: 0.1em;
@@ -1275,9 +1497,13 @@
       background: var(--panel-2);
       white-space: nowrap;
     }
+    #agent-result td .muted { font-size: 11.5px; }
+    .agent-legend { font-size: 11.5px !important; color: var(--muted); }
+
+    /* Model metadata: quietest line on the page (~11px mono). */
     .agent-meta {
-      margin-top: 14px;
-      padding-top: 12px;
+      margin-top: 6px;
+      padding-top: 14px;
       border-top: 1px solid var(--line);
       font-family: var(--mono);
       font-size: 11px;
@@ -1285,10 +1511,17 @@
       color: var(--dim);
     }
     .agent-disclaimer {
-      margin-top: 14px;
-      font-size: 14px;
+      margin-top: 18px;
+      font-size: 13px;
       color: var(--muted);
-      line-height: 1.55;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 640px) {
+      .agent-card { padding: 18px 16px; }
+      .agent-answer-block { padding: 20px 18px; }
+      .agent-answer { font-size: 16.5px; }
+      .agent-status-bar { padding: 12px 14px; }
     }
   </style>
 </head>
@@ -1708,39 +1941,62 @@ experiments/        notebooks and research exports</pre>
               <strong>current public-health information</strong>. It returns a
               grounded, safety-checked answer with full provenance, an execution
               trace and freshness timestamps. Location is used only when you
-              type it &mdash; it is never inferred.
+              type it; it is never inferred.
             </p>
           </div>
 
-          <div class="agent-card">
-            <div class="agent-status">
-              <span>Vision: <span id="agent-vision-status" class="muted">checking&hellip;</span></span>
-              <span>Generation: <span id="agent-gen-status" class="muted">checking&hellip;</span></span>
-              <span>Health intelligence: <span id="agent-health-status" class="muted">checking&hellip;</span></span>
-            </div>
+          <div class="agent-status-bar" aria-label="Service configuration">
+            <span class="status-caption">Services</span>
+            <span class="status-pill" id="agent-vision-pill">
+              <span class="dot"></span>
+              <span class="status-label">Vision</span>
+              <span class="status-value" id="agent-vision-status">checking</span>
+            </span>
+            <span class="status-pill" id="agent-gen-pill">
+              <span class="dot"></span>
+              <span class="status-label">Generation</span>
+              <span class="status-value" id="agent-gen-status">checking</span>
+            </span>
+            <span class="status-pill" id="agent-health-pill">
+              <span class="dot"></span>
+              <span class="status-label">Health intelligence</span>
+              <span class="status-value" id="agent-health-status">checking</span>
+            </span>
           </div>
 
-          <div class="agent-card">
-            <label class="agent-field-label" for="agent-question">Question</label>
-            <textarea id="agent-question" placeholder="e.g. Is there a current dengue outbreak I should be aware of?">Is there a current disease outbreak I should be aware of?</textarea>
+          <div class="agent-card agent-form-card">
+            <div class="agent-field">
+              <label class="agent-field-label" for="agent-question">Question</label>
+              <textarea id="agent-question" placeholder="e.g. Is there a current dengue outbreak I should be aware of?">Is there a current disease outbreak I should be aware of?</textarea>
+            </div>
 
-            <label class="agent-field-label" for="agent-location">Location (optional &mdash; explicit only; never inferred)</label>
-            <input type="text" id="agent-location" placeholder="e.g. Hyderabad, Telangana, India" />
+            <div class="agent-field">
+              <label class="agent-field-label" for="agent-location">
+                Location <span class="agent-field-hint">(optional, explicit only, never inferred)</span>
+              </label>
+              <input type="text" id="agent-location" placeholder="e.g. Hyderabad, Telangana, India" />
+            </div>
 
-            <label class="agent-field-label" for="agent-image">Image (optional: png, jpg, jpeg, webp, bmp, tif, tiff)</label>
-            <input type="file" id="agent-image" accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" />
+            <div class="agent-field">
+              <label class="agent-field-label" for="agent-image">
+                Image <span class="agent-field-hint">(optional: png, jpg, jpeg, webp, bmp, tif, tiff)</span>
+              </label>
+              <input type="file" id="agent-image" accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" />
+            </div>
 
             <div class="agent-actions">
               <button id="agent-submit" class="btn" type="button">Analyze</button>
             </div>
           </div>
 
-          <div id="agent-result" class="agent-card">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-              <h3 style="margin:0; border:0; padding:0;">Answer</h3>
-              <span id="agent-safety-badge" class="agent-badge">pass</span>
+          <div id="agent-result">
+            <div class="agent-answer-block">
+              <div class="agent-answer-head">
+                <h2>Answer</h2>
+                <span id="agent-safety-badge" class="agent-badge">pass</span>
+              </div>
+              <div id="agent-answer" class="agent-answer"></div>
             </div>
-            <div id="agent-answer" class="agent-answer"></div>
             <div id="agent-trace"></div>
             <div id="agent-health"></div>
             <div id="agent-warnings"></div>
@@ -2521,24 +2777,33 @@ experiments/        notebooks and research exports</pre>
         });
       }
 
-      function setAgentStatus(id, ok) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        el.textContent = ok ? "configured" : "not configured";
-        el.className = ok ? "ok" : "no";
+      // Drives one status pill. Preserves the exact configured / not
+      // configured semantics; never fabricates a value.
+      function setAgentStatus(valueId, pillId, ok) {
+        var value = document.getElementById(valueId);
+        var pill = document.getElementById(pillId);
+        if (value) value.textContent = ok ? "configured" : "not configured";
+        if (pill) {
+          pill.classList.remove("is-ok", "is-off");
+          pill.classList.add(ok ? "is-ok" : "is-off");
+        }
       }
 
       async function loadAgentHealth() {
         try {
           var r = await fetch("/health", { cache: "no-store" });
           var h = await r.json();
-          setAgentStatus("agent-vision-status", h.vision_configured);
-          setAgentStatus("agent-gen-status", h.generation_configured);
-          setAgentStatus("agent-health-status", h.health_intelligence_configured);
+          setAgentStatus("agent-vision-status", "agent-vision-pill", h.vision_configured);
+          setAgentStatus("agent-gen-status", "agent-gen-pill", h.generation_configured);
+          setAgentStatus("agent-health-status", "agent-health-pill", h.health_intelligence_configured);
         } catch (e) {
           ["agent-vision-status", "agent-gen-status", "agent-health-status"].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.textContent = "unknown";
+          });
+          ["agent-vision-pill", "agent-gen-pill", "agent-health-pill"].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) { el.classList.remove("is-ok", "is-off"); }
           });
         }
       }
@@ -2559,7 +2824,8 @@ experiments/        notebooks and research exports</pre>
       function renderAgentHealth(h) {
         var el = document.getElementById("agent-health");
         if (!h) { el.innerHTML = ""; return; }
-        var html = "<h3>Current public health information</h3>";
+        var html = '<div class="agent-section">';
+        html += "<h3>Current public health information</h3>";
         html += '<p class="muted">Live data status: <strong>' + aesc(h.live_data_status) + "</strong>" +
           (h.from_cache ? ' <span class="pill">cached</span>' : "") +
           " &middot; Last checked: <strong>" + aesc(h.retrieved_at) + "</strong></p>";
@@ -2576,7 +2842,7 @@ experiments/        notebooks and research exports</pre>
               : (f.alert_level === "watch" ? "watch" : "");
             var qmatch = f.matched_query ? ' <span class="pill">query match</span>' : "";
             var areas = (f.affected_areas || []).length
-              ? aesc((f.affected_areas || []).join(", ")) : '<span class="muted">—</span>';
+              ? aesc((f.affected_areas || []).join(", ")) : '<span class="muted">-</span>';
             html += "<tr>" +
               "<td><strong>" + aesc(f.disease_name) + "</strong>" + qmatch +
                 (f.finding_id ? '<br><span class="muted">id ' + aesc(f.finding_id) + "</span>" : "") +
@@ -2590,7 +2856,7 @@ experiments/        notebooks and research exports</pre>
               "<td>" + aesc(f.relevance_to_location) + '<br><span class="muted">' + aesc(f.requested_location) + "</span></td>" +
               "<td>" + aesc(f.risk_assessment) + (f.severity ? "<br>" + aesc(f.severity) : "") + "</td>" +
               '<td><span class="pill ' + alertCls + '">' + aesc(f.alert_level) + "</span></td>" +
-              "<td>" + aesc(f.freshness_state) + '<br><span class="muted">' + aesc(f.updated_at || f.published_at || "—") + "</span></td>" +
+              "<td>" + aesc(f.freshness_state) + '<br><span class="muted">' + aesc(f.updated_at || f.published_at || "-") + "</span></td>" +
               "<td>" + (f.sources || []).map(function (s) {
                   var org = s.uri
                     ? '<a href="' + aesc(s.uri) + '" target="_blank" rel="noopener">' + aesc(s.organization) + "</a>"
@@ -2602,10 +2868,11 @@ experiments/        notebooks and research exports</pre>
               "</tr>";
           });
           html += "</tbody></table></div>";
-          html += '<p class="muted" style="margin-top:8px">Legend: <strong>OBSERVED</strong> = image observation · ' +
-            "<strong>RETRIEVED</strong> = from a source · <strong>CURRENT</strong> = fresh live data (freshness \"current\") · " +
+          html += '<p class="muted agent-legend" style="margin-top:8px">Legend: <strong>OBSERVED</strong> = image observation &middot; ' +
+            "<strong>RETRIEVED</strong> = from a source &middot; <strong>CURRENT</strong> = fresh live data (freshness \"current\") &middot; " +
             "<strong>NOT ESTABLISHED</strong> = status unknown / no relevant report. Interpretation is never presented as source fact.</p>";
         }
+        html += "</div>";
         el.innerHTML = html;
       }
 
@@ -2616,11 +2883,18 @@ experiments/        notebooks and research exports</pre>
         badge.textContent = d.safety_action || "pass";
         badge.className = "agent-badge " + (d.safety_action || "pass");
 
-        document.getElementById("agent-answer").innerHTML = "<pre>" + aesc(d.answer) + "</pre>";
+        // Render the answer with the shared, safe markdown formatter (same one
+        // the diagnosis chat uses). It HTML-escapes all content first, then
+        // applies only paragraphs, bullet/numbered lists, simple headings,
+        // **bold**, *italic* and `inline code`. No markdown dependency, and
+        // raw model HTML is never interpreted.
+        document.getElementById("agent-answer").innerHTML =
+          renderMarkdown(d.answer == null ? "" : String(d.answer));
 
         if (d.needs_location) {
           document.getElementById("agent-trace").innerHTML =
-            '<h3>Location required</h3><p class="muted">' + aesc(d.location_prompt || "") + "</p>";
+            '<div class="agent-trace"><h3>Location required</h3><p class="muted">' +
+            aesc(d.location_prompt || "") + "</p></div>";
           return;
         }
 
@@ -2628,46 +2902,49 @@ experiments/        notebooks and research exports</pre>
         var t = d.trace || {};
         var locs = (t.locations || []).map(function (l) {
           return aesc(l.normalized || l.raw) + ' <span class="muted">(' + aesc(l.granularity) + ")</span>";
-        }).join(", ") || "—";
+        }).join(", ") || "-";
         var srcMap = t.sources || {};
         var srcHtml = Object.keys(srcMap).length
           ? Object.keys(srcMap).map(function (k) { return aesc(k) + ": <strong>" + aesc(srcMap[k]) + "</strong>"; }).join(" &middot; ")
-          : "—";
+          : "-";
         var evc = t.evidence_counts || {};
         var evcHtml = Object.keys(evc).length
           ? Object.keys(evc).map(function (k) { return aesc(k) + "=" + aesc(evc[k]); }).join(", ")
-          : "—";
+          : "-";
         document.getElementById("agent-trace").innerHTML =
+          '<div class="agent-trace">' +
           "<h3>Execution trace</h3>" +
-          '<p class="muted">Route: <code>' + aesc(t.route || d.route) + "</code> &middot; " +
+          '<p>Route: <code>' + aesc(t.route || d.route) + "</code> &middot; " +
           "Tools: " + aesc((t.tools_used || []).join(", ") || "none") + "</p>" +
-          '<p class="muted">Retrieval: ' + aesc(t.retrieval_status) + " &middot; " +
+          "<p>Retrieval: " + aesc(t.retrieval_status) + " &middot; " +
           "Live data: " + aesc(t.live_data_status) + " &middot; " +
           "Safety: " + aesc(t.safety_action) + "</p>" +
-          '<p class="muted">Sources queried: ' + srcHtml + "</p>" +
-          '<p class="muted">Evidence by type: ' + evcHtml + "</p>" +
-          '<p class="muted">Current data used: <strong>' + aesc(String(!!t.used_current_data)) + "</strong>" +
+          "<p>Sources queried: " + srcHtml + "</p>" +
+          "<p>Evidence by type: " + evcHtml + "</p>" +
+          "<p>Current data used: <strong>" + aesc(String(!!t.used_current_data)) + "</strong>" +
           " &middot; Cache hit: <strong>" + aesc(String(!!t.cache_hit)) + "</strong>" +
           " &middot; Conflicts present: <strong>" + aesc(String(!!t.conflicts_present)) + "</strong></p>" +
-          '<p class="muted">Requested location(s): ' + locs + "</p>" +
-          (t.last_checked ? '<p class="muted">Last checked: <strong>' + aesc(t.last_checked) + "</strong></p>" : "") +
-          ((t.router_reasons || []).length ? '<details><summary class="muted">why this route</summary><ul class="muted">' +
-            t.router_reasons.map(function (r) { return "<li>" + aesc(r) + "</li>"; }).join("") + "</ul></details>" : "");
+          "<p>Requested location(s): " + locs + "</p>" +
+          (t.last_checked ? "<p>Last checked: <strong>" + aesc(t.last_checked) + "</strong></p>" : "") +
+          ((t.router_reasons || []).length ? '<details><summary>why this route</summary><ul>' +
+            t.router_reasons.map(function (r) { return "<li>" + aesc(r) + "</li>"; }).join("") + "</ul></details>" : "") +
+          "</div>";
 
         renderAgentHealth(d.health);
 
         var warns = (d.warnings || []);
         document.getElementById("agent-warnings").innerHTML = warns.length
-          ? '<h3>Safety warnings</h3><ul class="warn">' + warns.map(function (w) { return "<li>" + aesc(w) + "</li>"; }).join("") + "</ul>"
+          ? '<div class="agent-note is-warnings"><h3>Safety warnings</h3><ul>' +
+            warns.map(function (w) { return "<li>" + aesc(w) + "</li>"; }).join("") + "</ul></div>"
           : "";
 
         var obs = (d.observations || []);
         document.getElementById("agent-observations").innerHTML = obs.length
-          ? "<h3>Image observations</h3><ul>" + obs.map(function (o) {
+          ? '<div class="agent-section"><h3>Image observations</h3><ul>' + obs.map(function (o) {
               return "<li><strong>" + aesc(o.label) + "</strong>: " + aesc(o.description) +
                 (o.confidence != null ? ' <span class="muted">(confidence ' + aesc(o.confidence) + ")</span>" : "") +
                 "</li>";
-            }).join("") + "</ul>"
+            }).join("") + "</ul></div>"
           : "";
 
         var ev = (d.evidence || []);
@@ -2679,7 +2956,8 @@ experiments/        notebooks and research exports</pre>
           health_surveillance: "Public-health surveillance",
           health_news: "Secondary reporting (media)"
         };
-        var evHtml = "<h3>Evidence (" + aesc(d.retrieval_status) + ")</h3>";
+        var evHtml = '<div class="agent-section">';
+        evHtml += "<h3>Evidence (" + aesc(d.retrieval_status) + ")</h3>";
         if (!ev.length) { evHtml += '<p class="muted">Status: ' + aesc(d.retrieval_status) + "</p>"; }
         Object.keys(groups).forEach(function (k) {
           evHtml += '<p class="muted"><strong>' + aesc(labels[k] || k) + "</strong></p><ul>" +
@@ -2694,20 +2972,22 @@ experiments/        notebooks and research exports</pre>
               return "<li>" + (e.uri
                 ? '<a href="' + aesc(e.uri) + '" target="_blank" rel="noopener">' + aesc(e.title) + "</a>"
                 : aesc(e.title)) +
-                (e.source ? ' <span class="muted">— ' + aesc(e.source) + "</span>" : "") +
+                (e.source ? ' <span class="muted">&middot; ' + aesc(e.source) + "</span>" : "") +
                 (dates.length ? ' <span class="muted">(' + dates.join(", ") + ")</span>" : "") +
                 "</li>";
             }).join("") + "</ul>";
         });
+        evHtml += "</div>";
         document.getElementById("agent-evidence").innerHTML = evHtml;
 
         var lims = (d.limitations || []);
         document.getElementById("agent-limitations").innerHTML = lims.length
-          ? '<h3>Limitations</h3><ul class="muted">' + lims.map(function (l) { return "<li>" + aesc(l) + "</li>"; }).join("") + "</ul>"
+          ? '<div class="agent-note is-limitations"><h3>Limitations</h3><ul>' +
+            lims.map(function (l) { return "<li>" + aesc(l) + "</li>"; }).join("") + "</ul></div>"
           : "";
 
         document.getElementById("agent-meta").innerHTML =
-          "vision model: " + aesc(d.vision_model || "—") + " · generation: " + aesc(d.generation_model || "—");
+          "vision model: " + aesc(d.vision_model || "-") + " &middot; generation: " + aesc(d.generation_model || "-");
       }
 
       submit.addEventListener("click", async function () {
