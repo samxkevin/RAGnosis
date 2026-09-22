@@ -76,14 +76,27 @@ def _png_bytes():
 
 # --- routing / UI ----------------------------------------------------------
 
-def test_root_serves_agent_ui(client):
+def test_root_serves_canonical_ragnosis_ui(client):
     c, _, _ = client
     resp = c.get("/")
     assert resp.status_code == 200
     assert resp.mimetype == "text/html"
     body = resp.get_data(as_text=True)
-    # Served page is the multimodal agent UI (demo.html), not the legacy chat UI.
+    # The canonical page is the original monochrome RAGnosis SPA (index.html),
+    # which hosts BOTH the multiround diagnosis chat and the agent — not the
+    # standalone blue/purple demo.html.
     assert "RAGnosis" in body
+    # Old monochrome visual identity (black background + Georgia serif).
+    assert "--bg: #000000" in body
+    assert "Georgia" in body
+    # Multiround diagnosis/chat interface (talks to POST /chat, keeps history).
+    assert "const conversation" in body
+    assert 'fetch("/chat"' in body
+    # Access to the composed multimodal agent (talks to POST /agent).
+    assert 'data-page="agent"' in body
+    assert 'id="page-agent"' in body
+    assert 'fetch("/agent"' in body
+    # Agent still renders the full execution trace / evidence UI.
     assert "Execution trace" in body
 
 

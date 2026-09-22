@@ -317,8 +317,14 @@ app.config["MAX_CONTENT_LENGTH"] = multimodal_api.CONFIG.max_upload_bytes
 
 @app.route("/", methods=["GET"])
 def index():
-    """Serve the RAGnosis agent UI (question + optional location/image)."""
-    return send_from_directory(ROOT_DIR / "multimodal", "demo.html")
+    """Serve the canonical RAGnosis UI.
+
+    This is the original monochrome RAGnosis single-page app (``index.html``):
+    the Home / About / Contact pages, the multiround Neo4j+Cohere **Diagnosis**
+    chat (POST /chat), and the composed multimodal **Agent** page (POST /agent).
+    Both experiences live in one restrained, black-and-white interface.
+    """
+    return send_from_directory(ROOT_DIR, "index.html")
 
 
 # Mount the composed multimodal agent + image analysis endpoints by reusing the
