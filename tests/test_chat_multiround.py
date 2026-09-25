@@ -195,11 +195,56 @@ def test_retrieval_failure_is_503_and_redacts_password(monkeypatch):
     resp = client.post("/chat", json={"message": "fever", "conversation": []})
     assert resp.status_code == 503
     body = resp.get_json()
-    # Existing semantics: error surfaced, disclaimer present, secret redacted.
+    # The user-facing message is safe and contains no provider/credential details.
     assert "disclaimer" in body
+    assert body["error"] == "retrieval_unavailable"
+    assert body["response"] == app_module.SAFE_RETRIEVAL_MESSAGE
     assert secret not in body["response"]
     assert secret not in body.get("error", "")
-    assert "[redacted]" in body["response"]
+    assert "auth failed" not in body["response"]
+    assert "[redacted]" not in body["response"]
+
+
+def test_cohere_429_is_graceful_and_does_not_fallback(monkeypatch):
+    class _RateLimitedError(Exception):
+        status_code = 429
+
+        def __str__(self):
+            return (
+                "headers: {'x-debug-trace-id': '937093cca317c5380f9640f44012a72d'} "
+                "status_code: 429 body: {'message': 'Please wait and try again later'}"
+            )
+
+    calls = []
+
+    def fake_chat(self, prompt, model):
+        calls.append(model)
+        raise _RateLimitedError()
+
+    monkeypatch.setattr(app_module.BiomedicalRAG, "_chat", fake_chat)
+    monkeypatch.setattr(
+        app_module.Neo4jConnector,
+        "search_entities",
+        lambda self, query_text: '{"name": "Influenza"}',
+    )
+
+    pipeline = app_module.DoctorChatPipeline("uri", "user", "pw", "key")
+    client = _client(monkeypatch, pipeline)
+
+    resp = client.post(
+        "/chat",
+        json={"message": "I have a fever", "conversation": []},
+    )
+
+    assert resp.status_code == 503
+    body = resp.get_json()
+    assert body["response"] == app_module.SAFE_GENERATION_MESSAGE
+    assert body["error"] == "generation_rate_limited"
+    assert "x-debug-trace-id" not in body["response"]
+    assert "937093cca317c5380f9640f44012a72d" not in body["response"]
+    assert "Please wait and try again later" not in body["response"]
+    assert "429" not in body["response"]
+    assert calls == [app_module.PRIMARY_COHERE_MODEL]
 
 
 def test_non_list_conversation_is_tolerated(monkeypatch):

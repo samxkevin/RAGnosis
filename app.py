@@ -49,6 +49,49 @@ def _redact(text, secret):
         return text.replace(secret, "[redacted]")
     return text
 
+
+SAFE_GENERATION_MESSAGE = (
+    "I'm having trouble processing your request right now. "
+    "Please try again in a moment."
+)
+SAFE_RETRIEVAL_MESSAGE = (
+    "I'm having trouble accessing the medical knowledge graph right now. "
+    "Please try again in a moment."
+)
+
+
+class GenerationUnavailableError(RuntimeError):
+    """Controlled failure that is safe to surface through the /chat API."""
+
+    def __init__(self, code="generation_unavailable"):
+        self.code = code
+        super().__init__(code)
+
+
+def _status_code(exc):
+    value = getattr(exc, "status_code", None)
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_rate_limited(exc):
+    return _status_code(exc) == 429 or type(exc).__name__ == "TooManyRequestsError"
+
+
+def _is_model_unavailable(exc):
+    status = _status_code(exc)
+    name = type(exc).__name__
+    message = str(exc).lower()
+    return (
+        status == 404
+        or name in {"NotFoundError", "ModelNotFoundError"}
+        or "model not found" in message
+        or "decommissioned" in message
+    )
+
+
 PRIMARY_COHERE_MODEL = "command-a-03-2025"
 FALLBACK_COHERE_MODEL = "command-r7b-12-2024"
 
@@ -250,29 +293,57 @@ YOUR RESPONSE:
 
     def answer(self, conversation, context):
         if not self.configured():
-            self.last_error = "COHERE_API_KEY is not set."
-            return "Cohere is not configured. Set COHERE_API_KEY and retry."
+            self.last_error = "not_configured"
+            logger.warning("Cohere generation unavailable: key not configured")
+            raise GenerationUnavailableError("generation_not_configured")
+
         prompt = self._prompt(conversation, context)
         try:
             return self._chat(prompt, self.model)
         except Exception as exc:
-            message = str(exc).lower()
-            model_error = any(
-                token in message
-                for token in ("model", "not found", "decommissioned", "unknown")
-            )
-            if model_error and self.model != FALLBACK_COHERE_MODEL:
-                logger.warning("Primary Cohere model failed; trying fallback model")
+            if _is_rate_limited(exc):
+                self.last_error = "rate_limited"
+                logger.warning(
+                    "Cohere generation rate limited (%s)",
+                    type(exc).__name__,
+                )
+                raise GenerationUnavailableError("generation_rate_limited") from exc
+
+            if _is_model_unavailable(exc) and self.model != FALLBACK_COHERE_MODEL:
+                logger.warning(
+                    "Primary Cohere model unavailable (%s); trying fallback",
+                    type(exc).__name__,
+                )
                 try:
                     text = self._chat(prompt, FALLBACK_COHERE_MODEL)
                     self.model = FALLBACK_COHERE_MODEL
                     self.last_error = ""
                     return text
                 except Exception as fallback_exc:
-                    self.last_error = _redact(fallback_exc, self.api_key)
-                    return f"Error querying Cohere Chat API: {self.last_error}"
-            self.last_error = _redact(exc, self.api_key)
-            return f"Error querying Cohere Chat API: {self.last_error}"
+                    if _is_rate_limited(fallback_exc):
+                        self.last_error = "rate_limited"
+                        logger.warning(
+                            "Cohere fallback generation rate limited (%s)",
+                            type(fallback_exc).__name__,
+                        )
+                        raise GenerationUnavailableError(
+                            "generation_rate_limited"
+                        ) from fallback_exc
+                    self.last_error = "fallback_unavailable"
+                    logger.error(
+                        "Cohere fallback generation failed (%s)",
+                        type(fallback_exc).__name__,
+                    )
+                    raise GenerationUnavailableError(
+                        "generation_unavailable"
+                    ) from fallback_exc
+
+            self.last_error = "generation_unavailable"
+            logger.error(
+                "Cohere generation failed (%s)",
+                type(exc).__name__,
+            )
+            raise GenerationUnavailableError("generation_unavailable") from exc
 
 
 class DoctorChatPipeline:
@@ -357,13 +428,21 @@ def chat():
                 "context_found": bool(context and context != "No relevant entities found."),
             }
         )
-    except Exception as exc:
-        safe = _redact(exc, neo4j_settings()["password"])
-        logger.error("Chat failed")
+    except GenerationUnavailableError as exc:
+        logger.warning("Chat generation unavailable: %s", exc.code)
         return jsonify(
             {
-                "response": f"Knowledge retrieval failed: {safe}",
-                "error": safe,
+                "response": SAFE_GENERATION_MESSAGE,
+                "error": exc.code,
+                "disclaimer": MEDICAL_DISCLAIMER,
+            }
+        ), 503
+    except Exception as exc:
+        logger.error("Chat failed (%s)", type(exc).__name__)
+        return jsonify(
+            {
+                "response": SAFE_RETRIEVAL_MESSAGE,
+                "error": "retrieval_unavailable",
                 "disclaimer": MEDICAL_DISCLAIMER,
             }
         ), 503
