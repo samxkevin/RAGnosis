@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import threading
 from pathlib import Path
 
@@ -102,6 +103,264 @@ MEDICAL_DISCLAIMER = (
 )
 
 SEARCH_PROPS = ["name", "text", "description", "disease", "symptom", "title", "canonical_name"]
+
+DIAGNOSIS_MEDICAL_PHRASES = sorted(
+    [
+        "shortness of breath",
+        "difficulty breathing",
+        "trouble breathing",
+        "labored breathing",
+        "loss of taste",
+        "loss of smell",
+        "loss of appetite",
+        "loss of consciousness",
+        "loss of balance",
+        "loss of vision",
+        "high blood pressure",
+        "low blood pressure",
+        "high blood sugar",
+        "low blood sugar",
+        "rapid heart rate",
+        "irregular heart rate",
+        "irregular heartbeat",
+        "heart palpitations",
+        "racing heart",
+        "chest pain",
+        "chest tightness",
+        "chest pressure",
+        "chest discomfort",
+        "sore throat",
+        "scratchy throat",
+        "swollen throat",
+        "throat irritation",
+        "high fever",
+        "low grade fever",
+        "mild fever",
+        "spiking fever",
+        "abdominal pain",
+        "stomach pain",
+        "stomach ache",
+        "belly pain",
+        "pelvic pain",
+        "muscle pain",
+        "muscle ache",
+        "muscle aches",
+        "joint pain",
+        "joint swelling",
+        "joint stiffness",
+        "body aches",
+        "body ache",
+        "runny nose",
+        "stuffy nose",
+        "nasal congestion",
+        "sinus congestion",
+        "sinus pressure",
+        "sinus pain",
+        "dry cough",
+        "productive cough",
+        "chronic cough",
+        "barking cough",
+        "whooping cough",
+        "coughing up blood",
+        "blood in sputum",
+        "blood in stool",
+        "blood in urine",
+        "night sweats",
+        "cold sweats",
+        "cold chills",
+        "chills and fever",
+        "weight loss",
+        "weight gain",
+        "blurred vision",
+        "blurry vision",
+        "double vision",
+        "skin rash",
+        "itchy rash",
+        "itchy skin",
+        "difficulty swallowing",
+        "painful swallowing",
+        "swollen lymph nodes",
+        "swollen glands",
+        "swollen tonsils",
+        "swollen ankles",
+        "swollen feet",
+        "swollen legs",
+        "acid reflux",
+        "heart burn",
+        "heartburn",
+        "ear pain",
+        "ear ache",
+        "earache",
+        "neck pain",
+        "neck stiffness",
+        "stiff neck",
+        "back pain",
+        "lower back pain",
+        "upper back pain",
+        "head ache",
+        "hoarse voice",
+        "dry mouth",
+        "frequent urination",
+        "painful urination",
+        "burning urination",
+        "mood swings",
+        "memory loss",
+        "brain fog",
+        "pale skin",
+        "yellow skin",
+        "yellow eyes",
+        "hair loss",
+        "numbness and tingling",
+        "pins and needles",
+        "light headedness",
+        "light headed",
+        "upper respiratory tract infection",
+        "upper respiratory infection",
+        "urinary tract infection",
+        "strep throat",
+        "sinus infection",
+        "ear infection",
+        "food poisoning",
+        "allergic reaction",
+        "asthma attack",
+        "panic attack",
+        "heart attack",
+    ],
+    key=len,
+    reverse=True,
+)
+
+DIAGNOSIS_STOP_WORDS = {
+    # Pronouns & determiners
+    "i", "me", "my", "myself", "we", "us", "our", "ours", "ourselves",
+    "you", "your", "yours", "yourself", "yourselves",
+    "he", "him", "his", "himself", "she", "her", "hers", "herself",
+    "it", "its", "itself", "they", "them", "their", "theirs", "themselves",
+    "what", "which", "who", "whom", "whose", "this", "that", "these", "those",
+    "a", "an", "the", "all", "any", "both", "each", "few", "more", "most",
+    "other", "some", "such", "no", "nor", "not", "only", "own", "same",
+
+    # Prepositions & Conjunctions
+    "about", "above", "across", "after", "afterwards", "again", "against",
+    "along", "already", "also", "although", "always", "among", "amongst",
+    "and", "around", "as", "at", "because", "before", "behind", "below",
+    "beside", "besides", "between", "beyond", "but", "by", "down", "during",
+    "except", "for", "from", "in", "inside", "into", "near", "of", "off",
+    "on", "onto", "or", "out", "outside", "over", "since", "so", "than",
+    "then", "there", "therefore", "through", "throughout", "to", "toward",
+    "towards", "under", "until", "up", "upon", "with", "within", "without",
+
+    # Verbs, auxiliaries & modals
+    "am", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "having",
+    "do", "does", "did", "doing", "done",
+    "can", "could", "shall", "should", "will", "would", "may", "might", "must",
+
+    # Contractions fragments
+    "ve", "re", "ll", "don", "didn", "doesn", "won", "wasn", "weren", "isn", "aren", "hasn", "haven", "hadn",
+
+    # Clinical & conversational framing
+    "patient", "patients", "person", "people", "man", "woman", "child", "children",
+    "report", "reports", "reported", "reporting",
+    "complain", "complains", "complained", "complaining", "complaint", "complaints",
+    "feel", "feeling", "feels", "felt",
+    "seem", "seems", "seemed", "seeming",
+    "look", "looks", "looked", "looking",
+    "get", "gets", "got", "getting", "gotten",
+    "go", "goes", "went", "gone", "going",
+    "come", "comes", "came", "coming",
+    "start", "starts", "started", "starting",
+    "experience", "experiences", "experienced", "experiencing",
+    "suffer", "suffers", "suffered", "suffering",
+    "notice", "notices", "noticed", "noticing",
+    "think", "thinks", "thought", "thinking",
+    "know", "knows", "knew", "knowing",
+    "tell", "tells", "told", "telling",
+    "ask", "asks", "asked", "asking",
+    "say", "says", "said", "saying",
+    "want", "wants", "wanted", "wanting",
+    "need", "needs", "needed", "needing",
+    "try", "tries", "tried", "trying",
+    "take", "takes", "took", "taken", "taking",
+    "give", "gives", "gave", "given", "giving",
+    "make", "makes", "made", "making",
+    "find", "finds", "found", "finding",
+    "see", "sees", "saw", "seen", "seeing",
+    "help", "please", "hello", "hi", "hey", "doc", "doctor",
+    "thanks", "thank", "thankyou",
+    "yes", "yeah", "yep", "sure", "ok", "okay",
+    "maybe", "perhaps", "probably", "possibly",
+    "really", "very", "quite", "extremely", "pretty", "fairly",
+    "just", "like", "well", "now", "still", "even",
+    "bad", "worse", "worst", "better", "good", "fine", "terrible", "awful", "horrible",
+    "severe", "severity", "mild", "moderate", "slight", "slightly",
+    "little", "bit", "lot", "lots", "much", "many", "less", "least",
+    "day", "days", "week", "weeks", "month", "months", "year", "years",
+    "hour", "hours", "minute", "minutes", "second", "seconds", "time", "times",
+    "today", "yesterday", "tomorrow", "tonight", "morning", "afternoon", "evening", "night", "nights",
+    "daily", "weekly", "monthly",
+    "ago", "past", "last", "lately", "recently", "recent", "current", "currently",
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+    "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousand",
+    "first", "second", "third", "fourth", "fifth", "couple", "several", "half", "double",
+    "how", "why", "when", "where",
+    "something", "anything", "nothing", "everything",
+    "someone", "anyone", "everyone",
+    "somewhere", "anywhere",
+    "problem", "issue", "issues", "symptom", "symptoms", "condition", "conditions",
+    "illness", "disease", "diseases",
+    "trouble", "worried", "worry", "wondering",
+}
+
+
+def extract_diagnosis_terms(text: str, max_terms: int = 6) -> list[str]:
+    """Deterministic, stdlib-only symptom/condition term extractor.
+
+    Extracts multi-word medical phrases first (longest match first) and then
+    retains meaningful single medical/symptom tokens while filtering out
+    conversational, temporal, numeric, and grammatical filler words.
+    """
+    if not text or not isinstance(text, str):
+        return []
+
+    cleaned = re.sub(r"[^a-z]+", " ", text.lower())
+    padded = f" {cleaned} "
+
+    matched_spans = []  # list of (start_idx, end_idx, phrase)
+
+    for phrase in DIAGNOSIS_MEDICAL_PHRASES:
+        pattern = r"(?<![a-z])" + re.escape(phrase) + r"(?![a-z])"
+        for match in re.finditer(pattern, padded):
+            start, end = match.start(), match.end()
+            if not any(s < end and start < e for s, e, _ in matched_spans):
+                matched_spans.append((start, end, phrase))
+
+    chars = list(padded)
+    for start, end, _ in matched_spans:
+        for i in range(start, end):
+            chars[i] = " "
+    unmatched = "".join(chars)
+
+    single_word_matches = []
+    for match in re.finditer(r"[a-z]{2,}", unmatched):
+        word = match.group()
+        if word not in DIAGNOSIS_STOP_WORDS:
+            single_word_matches.append((match.start(), match.end(), word))
+
+    all_matches = sorted(matched_spans + single_word_matches, key=lambda x: x[0])
+
+    seen = set()
+    deduped = []
+    for _, _, term in all_matches:
+        term = term.strip()
+        if term and term not in seen:
+            seen.add(term)
+            deduped.append(term)
+            if len(deduped) >= max_terms:
+                break
+
+    return deduped
 
 
 def _jsonable(value, limit=800):
@@ -205,8 +464,12 @@ class Neo4jConnector:
         if not query_text:
             return "No relevant entities found."
 
+        terms = extract_diagnosis_terms(query_text)
+        if not terms:
+            terms = [query_text[:300]]
+
         query_parts = [
-            f"(n.{prop} IS NOT NULL AND toLower(toString(n.{prop})) CONTAINS toLower($query))"
+            f"(n.{prop} IS NOT NULL AND toLower(toString(n.{prop})) CONTAINS toLower($term))"
             for prop in SEARCH_PROPS
         ]
         where_clause = " OR ".join(query_parts)
@@ -216,17 +479,58 @@ class Neo4jConnector:
             RETURN n
             LIMIT 5
         """
+
+        matched_entities = {}
+        order_counter = 0
+
         with self._session() as session:
-            result = session.run(cypher_query, {"query": query_text[:300]})
-            records = result.values()
-            context = "\n".join(
-                [
-                    json.dumps(_node_properties(row[0]), indent=2)
-                    for row in records
-                    if row
-                ]
-            )
-            return context if context else "No relevant entities found."
+            for term in terms:
+                result = session.run(cypher_query, {"term": term[:300]})
+                records = result.values() if hasattr(result, "values") else list(result)
+                for row in records:
+                    if not row:
+                        continue
+                    if isinstance(row, (list, tuple)):
+                        node = row[0]
+                    elif hasattr(row, "__getitem__") and "n" in row:
+                        node = row["n"]
+                    elif hasattr(row, "__getitem__"):
+                        try:
+                            node = row[0]
+                        except Exception:
+                            node = row
+                    else:
+                        node = row
+                    props = _node_properties(node)
+                    if not props:
+                        continue
+                    key = json.dumps(props, sort_keys=True)
+                    if key not in matched_entities:
+                        matched_entities[key] = {
+                            "props": props,
+                            "terms": {term},
+                            "order": order_counter,
+                        }
+                        order_counter += 1
+                    else:
+                        matched_entities[key]["terms"].add(term)
+
+        if not matched_entities:
+            return "No relevant entities found."
+
+        ranked = sorted(
+            matched_entities.values(),
+            key=lambda item: (-len(item["terms"]), item["order"]),
+        )
+
+        top_entities = ranked[:5]
+        context = "\n".join(
+            [
+                json.dumps(item["props"], indent=2)
+                for item in top_entities
+            ]
+        )
+        return context if context else "No relevant entities found."
 
 
 class BiomedicalRAG:
